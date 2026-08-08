@@ -172,6 +172,9 @@ python -m unittest discover -s tests -v
 
 GitHub Actions runs the test suite automatically on pushes and pull requests.
 
+
 ## Status
 
-MIGOps is under active development.
+MIGOps v0.1.0 is an early alpha release.
+
+Core workflows are implemented and covered by automated tests. Real-world validation across different NVIDIA MIG-capable GPU generations and driver versions is still ongoing.
