@@ -55,19 +55,19 @@ migops users
 Recommend an equal MIG split:
 
 ```bash
-migops split --gpu 0 --instances 4
+migops split gpu 0 4
 ```
 
 Preview applying it:
 
 ```bash
-sudo migops split --gpu 0 --instances 4 --apply --dry-run
+sudo migops split gpu 0 4 --apply --dry-run
 ```
 
 Apply it:
 
 ```bash
-sudo migops split --gpu 0 --instances 4 --apply --yes
+sudo migops split gpu 0 4 --apply --yes
 ```
 
 MIGOps selects from MIG profiles reported by the installed NVIDIA driver rather than inventing unsupported partition sizes.
@@ -77,22 +77,22 @@ MIGOps selects from MIG profiles reported by the installed NVIDIA driver rather 
 Enable or disable MIG mode:
 
 ```bash
-sudo migops mode enable --gpu 0
-sudo migops mode disable --gpu 0
+sudo migops enable gpu 0
+sudo migops disable gpu 0
 ```
 
 Create complete MIG instances:
 
 ```bash
-sudo migops create --gpu 0 --profile 3g.40gb
-sudo migops create --gpu 0 --profile 3g.40gb --count 2
+sudo migops create gpu 0 3g.40gb
+sudo migops create gpu 0 3g.40gb --count 2
 ```
 
 Destroy them safely:
 
 ```bash
-sudo migops destroy --gpu 0 --gi 2
-sudo migops destroy --gpu 0 --all
+sudo migops destroy gpu 0 --gi 2
+sudo migops destroy gpu 0 --all
 ```
 
 Advanced GI and CI commands are also available through:
@@ -133,7 +133,7 @@ Preview and apply:
 
 ```bash
 sudo migops apply config.yaml --dry-run
-sudo migops apply config.yaml --yes
+sudo migops apply config.yaml
 ```
 
 ## Snapshots
@@ -148,7 +148,7 @@ Restore a previous snapshot:
 
 ```bash
 sudo migops restore snapshot.yaml --dry-run
-sudo migops restore snapshot.yaml --yes
+sudo migops restore snapshot.yaml
 ```
 
 ## Safety

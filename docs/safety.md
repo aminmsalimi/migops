@@ -14,7 +14,7 @@ For desired-state apply, MIGOps:
 
 `--dry-run` never changes the GPU and reports active workloads as warnings.
 
-Real desired-state changes require `--yes`.
+Real desired-state changes ask for confirmation by default; `--yes` skips the prompt for automation.
 
 `--force` bypasses MIGOps workload protection. It does not guarantee that the NVIDIA driver will accept the operation.
 

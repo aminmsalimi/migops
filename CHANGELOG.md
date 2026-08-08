@@ -1,4 +1,4 @@
-# Changelog
+# Changelog\n\n## Unreleased\n\n### Changed\n\n- Simplified the public CLI to readable positional GPU syntax such as `migops split gpu 0 2` and first-class `migops enable gpu 0` / `migops disable gpu 0` commands.\n\n# Changelog
 
 ## Unreleased
 

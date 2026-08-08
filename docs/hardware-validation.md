@@ -6,9 +6,9 @@ Read-only checks:
 
 ```bash
 migops status
-migops profiles --gpu 0
-migops users --gpu 0
-migops split --gpu 0 --instances 2
+migops profiles gpu 0
+migops users gpu 0
+migops split gpu 0 2
 ```
 
 Desired-state checks:
@@ -23,9 +23,9 @@ migops apply config.yaml --dry-run
 During an approved maintenance window, test one real lifecycle sequence:
 
 ```bash
-sudo migops snapshot --gpu 0
+sudo migops snapshot gpu 0
 sudo migops create --gpu 0 --profile PROFILE --dry-run
-sudo migops destroy --gpu 0 --all --dry-run
+sudo migops destroy gpu 0 --all --dry-run
 ```
 
 Only execute destructive commands after confirming there are no important workloads and the GPU is safe to reconfigure.

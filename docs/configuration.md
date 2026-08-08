@@ -33,5 +33,5 @@ before applying:
 
 ```bash
 migops apply config.yaml --dry-run
-sudo migops apply config.yaml --yes
+sudo migops apply config.yaml
 ```

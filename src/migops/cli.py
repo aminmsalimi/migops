@@ -1,3 +1,7 @@
+"""MIGOps command-line interface."""
+
+from __future__ import annotations
+
 import argparse
 import sys
 
@@ -17,7 +21,6 @@ from migops.lifecycle import (
     destroy_mig,
     list_ci,
     list_gi,
-    mode_status,
     set_mig_mode,
 )
 from migops.planner import print_plan
@@ -26,6 +29,113 @@ from migops.snapshot import print_snapshot
 from migops.split import plan_split
 from migops.status import print_status
 from migops.workloads import print_users
+
+
+def _add_required_gpu(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "target",
+        choices=("gpu",),
+        metavar="gpu",
+        help="Target type. Currently: gpu",
+    )
+    parser.add_argument(
+        "gpu",
+        help="GPU index, UUID, or supported selector.",
+    )
+
+
+def _add_optional_gpu(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "target",
+        nargs="?",
+        choices=("gpu",),
+        metavar="gpu",
+        help="Optional target type: gpu",
+    )
+    parser.add_argument(
+        "gpu",
+        nargs="?",
+        help="GPU index, UUID, or supported selector.",
+    )
+
+
+def _optional_gpu_value(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> str | None:
+    if args.target is None and args.gpu is None:
+        return None
+
+    if args.target == "gpu" and args.gpu is not None:
+        return args.gpu
+
+    parser.error("GPU selector must use: gpu <GPU>")
+    return None
+
+
+def _confirm(
+    message: str,
+    *,
+    yes: bool,
+) -> bool:
+    """Ask for confirmation unless --yes was supplied."""
+
+    if yes:
+        return True
+
+    if not sys.stdin.isatty():
+        print(
+            "[BLOCKED] Confirmation required. "
+            "Use --yes for non-interactive execution."
+        )
+        return False
+
+    answer = input(f"{message} [y/N]: ").strip().lower()
+    return answer in {"y", "yes"}
+
+
+def _parse_ci_list_scope(
+    rest: list[str],
+    parser: argparse.ArgumentParser,
+) -> str | None:
+    if not rest:
+        return None
+
+    if len(rest) == 2 and rest[0] == "gi":
+        return rest[1]
+
+    parser.error("Use: migops ci list gpu <GPU> [gi <GI>]")
+    return None
+
+
+def _parse_ci_delete_scope(
+    rest: list[str],
+    destroy_all: bool,
+    parser: argparse.ArgumentParser,
+) -> tuple[str | None, str | None]:
+    if destroy_all:
+        if not rest:
+            return None, None
+
+        if len(rest) == 2 and rest[0] == "gi":
+            return rest[1], None
+
+        parser.error(
+            "Use: migops ci delete gpu <GPU> [gi <GI>] --all"
+        )
+
+    if (
+        len(rest) == 4
+        and rest[0] == "gi"
+        and rest[2] == "ci"
+    ):
+        return rest[1], rest[3]
+
+    parser.error(
+        "Use: migops ci delete gpu <GPU> gi <GI> ci <CI> "
+        "or add --all"
+    )
+    return None, None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,14 +159,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser(
         "status",
-        help="Show NVIDIA GPU and MIG status.",
+        help="Show system, NVIDIA GPU, MIG and workload status.",
     )
 
     profiles_parser = subparsers.add_parser(
         "profiles",
         help="Show supported MIG profiles.",
     )
-    profiles_parser.add_argument("--gpu")
+    _add_optional_gpu(profiles_parser)
     profiles_parser.add_argument(
         "--json",
         action="store_true",
@@ -66,10 +176,48 @@ def build_parser() -> argparse.ArgumentParser:
         "users",
         help="Show processes using NVIDIA GPUs or MIG devices.",
     )
-    users_parser.add_argument("--gpu")
+    _add_optional_gpu(users_parser)
     users_parser.add_argument(
         "--json",
         action="store_true",
+    )
+
+    enable_parser = subparsers.add_parser(
+        "enable",
+        help="Enable MIG mode on a GPU.",
+    )
+    _add_required_gpu(enable_parser)
+    enable_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+    )
+    enable_parser.add_argument(
+        "--force",
+        action="store_true",
+    )
+    enable_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip interactive confirmation.",
+    )
+
+    disable_parser = subparsers.add_parser(
+        "disable",
+        help="Disable MIG mode on a GPU.",
+    )
+    _add_required_gpu(disable_parser)
+    disable_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+    )
+    disable_parser.add_argument(
+        "--force",
+        action="store_true",
+    )
+    disable_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip interactive confirmation.",
     )
 
     validate_parser = subparsers.add_parser(
@@ -94,7 +242,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     plan_parser = subparsers.add_parser(
         "plan",
-        help="Show the changes required to reach desired state.",
+        help="Show changes required to reach desired state.",
     )
     plan_parser.add_argument("config")
     plan_parser.add_argument(
@@ -106,7 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
         "snapshot",
         help="Save current MIG state as reusable YAML.",
     )
-    snapshot_parser.add_argument("--gpu")
+    _add_optional_gpu(snapshot_parser)
     snapshot_parser.add_argument("--output")
 
     apply_parser = subparsers.add_parser(
@@ -121,7 +269,7 @@ def build_parser() -> argparse.ArgumentParser:
     apply_parser.add_argument(
         "--yes",
         action="store_true",
-        help="Required for real changes.",
+        help="Skip interactive confirmation.",
     )
     apply_parser.add_argument(
         "--force",
@@ -144,6 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
     restore_parser.add_argument(
         "--yes",
         action="store_true",
+        help="Skip interactive confirmation.",
     )
     restore_parser.add_argument(
         "--force",
@@ -154,14 +303,11 @@ def build_parser() -> argparse.ArgumentParser:
         "split",
         help="Recommend or apply an equal MIG partition layout.",
     )
+    _add_required_gpu(split_parser)
     split_parser.add_argument(
-        "--gpu",
-        default="0",
-    )
-    split_parser.add_argument(
-        "--instances",
+        "instances",
         type=int,
-        required=True,
+        help="Number of equal MIG instances.",
     )
     split_parser.add_argument(
         "--json",
@@ -170,14 +316,17 @@ def build_parser() -> argparse.ArgumentParser:
     split_parser.add_argument(
         "--apply",
         action="store_true",
+        help="Apply the recommended split.",
     )
     split_parser.add_argument(
         "--dry-run",
         action="store_true",
+        help="Preview applying the recommended split.",
     )
     split_parser.add_argument(
         "--yes",
         action="store_true",
+        help="Skip interactive confirmation with --apply.",
     )
     split_parser.add_argument(
         "--force",
@@ -188,13 +337,10 @@ def build_parser() -> argparse.ArgumentParser:
         "create",
         help="Create complete MIG instances (GI + CI automatically).",
     )
+    _add_required_gpu(create_parser)
     create_parser.add_argument(
-        "--gpu",
-        default="0",
-    )
-    create_parser.add_argument(
-        "--profile",
-        required=True,
+        "profile",
+        help="MIG profile name or supported profile ID.",
     )
     create_parser.add_argument(
         "--count",
@@ -210,20 +356,18 @@ def build_parser() -> argparse.ArgumentParser:
         "destroy",
         help="Safely destroy complete MIG instances.",
     )
-    destroy_parser.add_argument(
-        "--gpu",
-        default="0",
+    _add_required_gpu(destroy_parser)
+    destroy_target = destroy_parser.add_mutually_exclusive_group(
+        required=True
     )
-
-    destroy_target = (
-        destroy_parser.add_mutually_exclusive_group(
-            required=True
-        )
+    destroy_target.add_argument(
+        "--gi",
+        help="GPU Instance ID to destroy.",
     )
-    destroy_target.add_argument("--gi")
     destroy_target.add_argument(
         "--all",
         action="store_true",
+        help="Destroy all MIG instances on the GPU.",
     )
     destroy_parser.add_argument(
         "--dry-run",
@@ -233,43 +377,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
     )
-
-    mode_parser = subparsers.add_parser(
-        "mode",
-        help="Inspect, enable or disable MIG mode.",
+    destroy_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip interactive confirmation.",
     )
-    mode_subparsers = mode_parser.add_subparsers(
-        dest="mode_action",
-        required=True,
-    )
-
-    mode_status_parser = mode_subparsers.add_parser(
-        "status"
-    )
-    mode_status_parser.add_argument(
-        "--gpu",
-        default="0",
-    )
-
-    for action in (
-        "enable",
-        "disable",
-    ):
-        action_parser = mode_subparsers.add_parser(
-            action
-        )
-        action_parser.add_argument(
-            "--gpu",
-            default="0",
-        )
-        action_parser.add_argument(
-            "--dry-run",
-            action="store_true",
-        )
-        action_parser.add_argument(
-            "--force",
-            action="store_true",
-        )
 
     gi_parser = subparsers.add_parser(
         "gi",
@@ -280,21 +392,18 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
-    gi_list = gi_subparsers.add_parser("list")
-    gi_list.add_argument(
-        "--gpu",
-        default="0",
+    gi_list = gi_subparsers.add_parser(
+        "list",
+        help="List GPU Instances.",
     )
+    _add_required_gpu(gi_list)
 
-    gi_create = gi_subparsers.add_parser("create")
-    gi_create.add_argument(
-        "--gpu",
-        default="0",
+    gi_create = gi_subparsers.add_parser(
+        "create",
+        help="Create a GPU Instance.",
     )
-    gi_create.add_argument(
-        "--profile",
-        required=True,
-    )
+    _add_required_gpu(gi_create)
+    gi_create.add_argument("profile")
     gi_create.add_argument(
         "--with-ci",
         action="store_true",
@@ -304,19 +413,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    gi_delete = gi_subparsers.add_parser("delete")
+    gi_delete = gi_subparsers.add_parser(
+        "delete",
+        help="Delete a GPU Instance.",
+    )
+    _add_required_gpu(gi_delete)
     gi_delete.add_argument(
-        "--gpu",
-        default="0",
+        "gi",
+        nargs="?",
+        help="GPU Instance ID.",
     )
-
-    gi_delete_group = (
-        gi_delete.add_mutually_exclusive_group(
-            required=True
-        )
-    )
-    gi_delete_group.add_argument("--gi")
-    gi_delete_group.add_argument(
+    gi_delete.add_argument(
         "--all",
         action="store_true",
     )
@@ -327,6 +434,11 @@ def build_parser() -> argparse.ArgumentParser:
     gi_delete.add_argument(
         "--force",
         action="store_true",
+    )
+    gi_delete.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip interactive confirmation.",
     )
 
     ci_parser = subparsers.add_parser(
@@ -338,45 +450,44 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
-    ci_list = ci_subparsers.add_parser("list")
+    ci_list = ci_subparsers.add_parser(
+        "list",
+        help="List Compute Instances.",
+    )
+    _add_required_gpu(ci_list)
     ci_list.add_argument(
-        "--gpu",
-        default="0",
+        "scope",
+        nargs="*",
+        metavar="gi",
     )
-    ci_list.add_argument("--gi")
 
-    ci_create = ci_subparsers.add_parser("create")
-    ci_create.add_argument(
-        "--gpu",
-        default="0",
+    ci_create = ci_subparsers.add_parser(
+        "create",
+        help="Create a Compute Instance.",
     )
+    _add_required_gpu(ci_create)
     ci_create.add_argument(
-        "--gi",
-        required=True,
+        "gi_word",
+        choices=("gi",),
+        metavar="gi",
     )
-    ci_create.add_argument(
-        "--profile",
-        required=True,
-    )
+    ci_create.add_argument("gi")
+    ci_create.add_argument("profile")
     ci_create.add_argument(
         "--dry-run",
         action="store_true",
     )
 
-    ci_delete = ci_subparsers.add_parser("delete")
+    ci_delete = ci_subparsers.add_parser(
+        "delete",
+        help="Delete Compute Instances.",
+    )
+    _add_required_gpu(ci_delete)
     ci_delete.add_argument(
-        "--gpu",
-        default="0",
+        "scope",
+        nargs="*",
     )
-    ci_delete.add_argument("--gi")
-
-    ci_delete_target = (
-        ci_delete.add_mutually_exclusive_group(
-            required=True
-        )
-    )
-    ci_delete_target.add_argument("--ci")
-    ci_delete_target.add_argument(
+    ci_delete.add_argument(
         "--all",
         action="store_true",
     )
@@ -388,6 +499,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
     )
+    ci_delete.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip interactive confirmation.",
+    )
 
     return parser
 
@@ -397,88 +513,131 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "status":
-        sys.exit(
-            print_status()
-        )
+        sys.exit(print_status())
 
     if args.command == "profiles":
-        sys.exit(
-            print_profiles(
-                args.gpu,
-                args.json,
-            )
-        )
+        gpu = _optional_gpu_value(args, parser)
+        sys.exit(print_profiles(gpu, args.json))
 
     if args.command == "users":
+        gpu = _optional_gpu_value(args, parser)
+        sys.exit(print_users(gpu, args.json))
+
+    if args.command in {"enable", "disable"}:
+        enabled = args.command == "enable"
+
+        if (
+            not args.dry_run
+            and not _confirm(
+                f"{'Enable' if enabled else 'Disable'} MIG mode "
+                f"on GPU {args.gpu}?",
+                yes=args.yes,
+            )
+        ):
+            print("No changes have been made.")
+            sys.exit(1)
+
         sys.exit(
-            print_users(
+            set_mig_mode(
                 args.gpu,
-                args.json,
+                enabled=enabled,
+                dry_run=args.dry_run,
+                force=args.force,
             )
         )
 
     if args.command == "validate":
-        sys.exit(
-            print_validation(
-                args.config,
-                args.json,
-            )
-        )
+        sys.exit(print_validation(args.config, args.json))
 
     if args.command == "diff":
-        sys.exit(
-            print_diff(
-                args.config,
-                args.json,
-            )
-        )
+        sys.exit(print_diff(args.config, args.json))
 
     if args.command == "plan":
-        sys.exit(
-            print_plan(
-                args.config,
-                args.json,
-            )
-        )
+        sys.exit(print_plan(args.config, args.json))
 
     if args.command == "snapshot":
-        sys.exit(
-            print_snapshot(
-                args.output,
-                args.gpu,
-            )
-        )
+        gpu = _optional_gpu_value(args, parser)
+        sys.exit(print_snapshot(args.output, gpu))
 
     if args.command == "apply":
+        approved = args.yes
+
+        if (
+            not args.dry_run
+            and not approved
+        ):
+            approved = _confirm(
+                f"Apply desired state from {args.config}?",
+                yes=False,
+            )
+
+            if not approved:
+                print("No changes have been made.")
+                sys.exit(1)
+
         sys.exit(
             apply_config(
                 args.config,
                 dry_run=args.dry_run,
-                yes=args.yes,
+                yes=approved,
                 force=args.force,
                 snapshot_dir=args.snapshot_dir,
             )
         )
 
     if args.command == "restore":
+        approved = args.yes
+
+        if (
+            not args.dry_run
+            and not approved
+        ):
+            approved = _confirm(
+                f"Restore MIG state from {args.snapshot}?",
+                yes=False,
+            )
+
+            if not approved:
+                print("No changes have been made.")
+                sys.exit(1)
+
         sys.exit(
             restore_snapshot(
                 args.snapshot,
                 dry_run=args.dry_run,
-                yes=args.yes,
+                yes=approved,
                 force=args.force,
             )
         )
 
     if args.command == "split":
+        # A dry-run means "preview applying this recommendation".
+        wants_apply_path = args.apply or args.dry_run
+        approved = args.yes
+
+        if (
+            args.apply
+            and not args.dry_run
+            and not approved
+        ):
+            approved = _confirm(
+                f"Apply the recommended {args.instances}-way split "
+                f"to GPU {args.gpu}?",
+                yes=False,
+            )
+
+            if not approved:
+                print("No changes have been made.")
+                sys.exit(1)
+
         sys.exit(
             plan_split(
                 args.gpu,
                 args.instances,
                 args.json,
-                args.apply,
+                wants_apply_path,
                 args.dry_run,
-                args.yes,
+                approved,
                 args.force,
             )
         )
@@ -494,6 +653,20 @@ def main() -> None:
         )
 
     if args.command == "destroy":
+        if (
+            not args.dry_run
+            and not _confirm(
+                (
+                    f"Destroy all MIG instances on GPU {args.gpu}?"
+                    if args.all
+                    else f"Destroy GI {args.gi} on GPU {args.gpu}?"
+                ),
+                yes=args.yes,
+            )
+        ):
+            print("No changes have been made.")
+            sys.exit(1)
+
         sys.exit(
             destroy_mig(
                 args.gpu,
@@ -504,33 +677,9 @@ def main() -> None:
             )
         )
 
-    if args.command == "mode":
-        if args.mode_action == "status":
-            sys.exit(
-                mode_status(
-                    args.gpu
-                )
-            )
-
-        sys.exit(
-            set_mig_mode(
-                args.gpu,
-                enabled=(
-                    args.mode_action
-                    == "enable"
-                ),
-                dry_run=args.dry_run,
-                force=args.force,
-            )
-        )
-
     if args.command == "gi":
         if args.gi_action == "list":
-            sys.exit(
-                list_gi(
-                    args.gpu
-                )
-            )
+            sys.exit(list_gi(args.gpu))
 
         if args.gi_action == "create":
             sys.exit(
@@ -542,14 +691,30 @@ def main() -> None:
                 )
             )
 
+        if bool(args.gi) == bool(args.all):
+            parser.error(
+                "Use either a GI ID or --all, for example: "
+                "migops gi delete gpu 0 1"
+            )
+
+        if (
+            not args.dry_run
+            and not _confirm(
+                (
+                    f"Delete all GPU Instances on GPU {args.gpu}?"
+                    if args.all
+                    else f"Delete GI {args.gi} on GPU {args.gpu}?"
+                ),
+                yes=args.yes,
+            )
+        ):
+            print("No changes have been made.")
+            sys.exit(1)
+
         sys.exit(
             delete_gi(
                 args.gpu,
-                gi=(
-                    None
-                    if args.all
-                    else args.gi
-                ),
+                gi=None if args.all else args.gi,
                 dry_run=args.dry_run,
                 force=args.force,
             )
@@ -557,12 +722,11 @@ def main() -> None:
 
     if args.command == "ci":
         if args.ci_action == "list":
-            sys.exit(
-                list_ci(
-                    args.gpu,
-                    args.gi,
-                )
+            gi = _parse_ci_list_scope(
+                args.scope,
+                parser,
             )
+            sys.exit(list_ci(args.gpu, gi))
 
         if args.ci_action == "create":
             sys.exit(
@@ -574,23 +738,31 @@ def main() -> None:
                 )
             )
 
+        gi, ci = _parse_ci_delete_scope(
+            args.scope,
+            args.all,
+            parser,
+        )
+
         if (
-            args.ci is not None
-            and args.gi is None
-        ):
-            parser.error(
-                "--gi is required when deleting a specific --ci"
+            not args.dry_run
+            and not _confirm(
+                (
+                    f"Delete matching Compute Instances on GPU {args.gpu}?"
+                    if args.all
+                    else f"Delete CI {ci} from GI {gi} on GPU {args.gpu}?"
+                ),
+                yes=args.yes,
             )
+        ):
+            print("No changes have been made.")
+            sys.exit(1)
 
         sys.exit(
             delete_ci(
                 args.gpu,
-                gi=args.gi,
-                ci=(
-                    None
-                    if args.all
-                    else args.ci
-                ),
+                gi=gi,
+                ci=ci,
                 dry_run=args.dry_run,
                 force=args.force,
             )
