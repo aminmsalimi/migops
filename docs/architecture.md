@@ -13,7 +13,7 @@ MIGOps exposes both a simple workflow and an advanced workflow.
 Normal administration:
 
 ```text
-status / enable / disable / split / create / destroy
+status / recommend / split / enable / disable / create / destroy
 ```
 
 Advanced administration:

@@ -8,6 +8,7 @@
 
 ### Changed
 
+- Separated split recommendation from execution: `migops recommend gpu 0 2` is read-only, while `sudo migops split gpu 0 2` performs the split.\n
 - Merged environment diagnostics into `migops status` and removed the separate `migops doctor` command.
 
 ### Added

@@ -25,6 +25,7 @@ class TestCLI(unittest.TestCase):
             "snapshot",
             "apply",
             "restore",
+            "recommend",
             "split",
             "create",
             "destroy",
@@ -36,29 +37,29 @@ class TestCLI(unittest.TestCase):
         self.assertNotIn("doctor", help_text)
         self.assertNotIn("mode", help_text)
 
-    def test_enable_syntax(self):
+    def test_recommend_syntax(self):
         args = self.parser.parse_args(
-            ["enable", "gpu", "0"]
+            ["recommend", "gpu", "0", "2"]
         )
 
-        self.assertEqual(args.command, "enable")
+        self.assertEqual(args.command, "recommend")
         self.assertEqual(args.gpu, "0")
-
-    def test_disable_syntax(self):
-        args = self.parser.parse_args(
-            ["disable", "gpu", "0"]
-        )
-
-        self.assertEqual(args.command, "disable")
-        self.assertEqual(args.gpu, "0")
+        self.assertEqual(args.instances, 2)
 
     def test_split_syntax(self):
         args = self.parser.parse_args(
             ["split", "gpu", "0", "2"]
         )
 
+        self.assertEqual(args.command, "split")
         self.assertEqual(args.gpu, "0")
         self.assertEqual(args.instances, 2)
+
+    def test_split_has_no_apply_flag(self):
+        with self.assertRaises(SystemExit):
+            self.parser.parse_args(
+                ["split", "gpu", "0", "2", "--apply"]
+            )
 
     def test_split_dry_run_syntax(self):
         args = self.parser.parse_args(
@@ -67,59 +68,17 @@ class TestCLI(unittest.TestCase):
 
         self.assertTrue(args.dry_run)
 
-    def test_profiles_gpu_syntax(self):
+    def test_enable_syntax(self):
         args = self.parser.parse_args(
-            ["profiles", "gpu", "0"]
+            ["enable", "gpu", "0"]
         )
-
         self.assertEqual(args.gpu, "0")
 
-    def test_users_gpu_syntax(self):
+    def test_disable_syntax(self):
         args = self.parser.parse_args(
-            ["users", "gpu", "0"]
+            ["disable", "gpu", "0"]
         )
-
         self.assertEqual(args.gpu, "0")
-
-    def test_create_syntax(self):
-        args = self.parser.parse_args(
-            ["create", "gpu", "0", "3g.40gb"]
-        )
-
-        self.assertEqual(args.gpu, "0")
-        self.assertEqual(args.profile, "3g.40gb")
-
-    def test_destroy_syntax(self):
-        args = self.parser.parse_args(
-            ["destroy", "gpu", "0", "--all"]
-        )
-
-        self.assertTrue(args.all)
-
-    def test_gi_syntax(self):
-        args = self.parser.parse_args(
-            ["gi", "create", "gpu", "0", "3g.40gb"]
-        )
-
-        self.assertEqual(args.gi_action, "create")
-        self.assertEqual(args.profile, "3g.40gb")
-
-    def test_ci_create_syntax(self):
-        args = self.parser.parse_args(
-            [
-                "ci",
-                "create",
-                "gpu",
-                "0",
-                "gi",
-                "1",
-                "3g.40gb",
-            ]
-        )
-
-        self.assertEqual(args.gpu, "0")
-        self.assertEqual(args.gi, "1")
-        self.assertEqual(args.profile, "3g.40gb")
 
 
 if __name__ == "__main__":

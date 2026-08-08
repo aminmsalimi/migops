@@ -55,19 +55,19 @@ migops users
 Recommend an equal MIG split:
 
 ```bash
-migops split gpu 0 4
+migops recommend gpu 0 4
 ```
 
 Preview applying it:
 
 ```bash
-sudo migops split gpu 0 4 --apply --dry-run
+sudo migops split gpu 0 4 --dry-run
 ```
 
 Apply it:
 
 ```bash
-sudo migops split gpu 0 4 --apply --yes
+sudo migops split gpu 0 4 --yes
 ```
 
 MIGOps selects from MIG profiles reported by the installed NVIDIA driver rather than inventing unsupported partition sizes.

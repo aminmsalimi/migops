@@ -78,8 +78,6 @@ def _confirm(
     *,
     yes: bool,
 ) -> bool:
-    """Ask for confirmation unless --yes was supplied."""
-
     if yes:
         return True
 
@@ -299,34 +297,40 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
+    recommend_parser = subparsers.add_parser(
+        "recommend",
+        help="Recommend an equal MIG split without changing the GPU.",
+    )
+    _add_required_gpu(recommend_parser)
+    recommend_parser.add_argument(
+        "instances",
+        type=int,
+        help="Requested number of equal MIG instances.",
+    )
+    recommend_parser.add_argument(
+        "--json",
+        action="store_true",
+    )
+
     split_parser = subparsers.add_parser(
         "split",
-        help="Recommend or apply an equal MIG partition layout.",
+        help="Split a GPU into equal MIG instances.",
     )
     _add_required_gpu(split_parser)
     split_parser.add_argument(
         "instances",
         type=int,
-        help="Number of equal MIG instances.",
-    )
-    split_parser.add_argument(
-        "--json",
-        action="store_true",
-    )
-    split_parser.add_argument(
-        "--apply",
-        action="store_true",
-        help="Apply the recommended split.",
+        help="Number of equal MIG instances to create.",
     )
     split_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Preview applying the recommended split.",
+        help="Preview the split without changing the GPU.",
     )
     split_parser.add_argument(
         "--yes",
         action="store_true",
-        help="Skip interactive confirmation with --apply.",
+        help="Skip interactive confirmation.",
     )
     split_parser.add_argument(
         "--force",
@@ -562,10 +566,7 @@ def main() -> None:
     if args.command == "apply":
         approved = args.yes
 
-        if (
-            not args.dry_run
-            and not approved
-        ):
+        if not args.dry_run and not approved:
             approved = _confirm(
                 f"Apply desired state from {args.config}?",
                 yes=False,
@@ -588,10 +589,7 @@ def main() -> None:
     if args.command == "restore":
         approved = args.yes
 
-        if (
-            not args.dry_run
-            and not approved
-        ):
+        if not args.dry_run and not approved:
             approved = _confirm(
                 f"Restore MIG state from {args.snapshot}?",
                 yes=False,
@@ -610,19 +608,26 @@ def main() -> None:
             )
         )
 
+    if args.command == "recommend":
+        sys.exit(
+            plan_split(
+                args.gpu,
+                args.instances,
+                args.json,
+                False,
+                False,
+                False,
+                False,
+            )
+        )
+
     if args.command == "split":
-        # A dry-run means "preview applying this recommendation".
-        wants_apply_path = args.apply or args.dry_run
         approved = args.yes
 
-        if (
-            args.apply
-            and not args.dry_run
-            and not approved
-        ):
+        if not args.dry_run and not approved:
             approved = _confirm(
-                f"Apply the recommended {args.instances}-way split "
-                f"to GPU {args.gpu}?",
+                f"Split GPU {args.gpu} into "
+                f"{args.instances} MIG instances?",
                 yes=False,
             )
 
@@ -634,8 +639,8 @@ def main() -> None:
             plan_split(
                 args.gpu,
                 args.instances,
-                args.json,
-                wants_apply_path,
+                False,
+                True,
                 args.dry_run,
                 approved,
                 args.force,

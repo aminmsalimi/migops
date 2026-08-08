@@ -31,3 +31,4 @@ finalize_migops_v010.py
 merge_doctor_into_status.py
 \nupdate_migops_short_cli.py\n
 fix_migops_disable_empty_state.py
+update_migops_recommend_vs_split.py

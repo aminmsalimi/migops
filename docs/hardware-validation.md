@@ -8,7 +8,7 @@ Read-only checks:
 migops status
 migops profiles gpu 0
 migops users gpu 0
-migops split gpu 0 2
+migops recommend gpu 0 2
 ```
 
 Desired-state checks:

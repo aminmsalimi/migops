@@ -13,7 +13,7 @@ migops users gpu 0
 For an equal split recommendation:
 
 ```bash
-migops split gpu 0 4
+migops recommend gpu 0 4
 ```
 
 Before any real desired-state change, preview it:
