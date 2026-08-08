@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from migops import __version__
+from migops.profiles import print_profiles
 from migops.status import print_status
 
 
@@ -111,14 +112,33 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
 
+    # doctor
     subparsers.add_parser(
         "doctor",
         help="Check the local NVIDIA GPU environment.",
     )
 
+    # status
     subparsers.add_parser(
         "status",
         help="Show NVIDIA GPU and MIG status.",
+    )
+
+    # profiles
+    profiles_parser = subparsers.add_parser(
+        "profiles",
+        help="Show supported NVIDIA MIG GPU instance profiles.",
+    )
+
+    profiles_parser.add_argument(
+        "--gpu",
+        help="GPU index, UUID, or PCI bus ID.",
+    )
+
+    profiles_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output profile information as JSON.",
     )
 
     return parser
@@ -133,6 +153,14 @@ def main() -> None:
 
     if args.command == "status":
         sys.exit(print_status())
+
+    if args.command == "profiles":
+        sys.exit(
+            print_profiles(
+                gpu=args.gpu,
+                json_output=args.json,
+            )
+        )
 
     parser.print_help()
 
