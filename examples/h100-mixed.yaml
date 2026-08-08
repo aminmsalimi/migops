@@ -1,0 +1,15 @@
+version: 1
+
+gpus:
+  - gpu: "0"
+    mig_enabled: true
+
+    instances:
+      - profile: "3g.40gb"
+        count: 1
+
+      - profile: "2g.20gb"
+        count: 1
+
+      - profile: "1g.10gb"
+        count: 2

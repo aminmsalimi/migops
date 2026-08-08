@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from migops import __version__
+from migops.config import print_validation
 from migops.doctor import command_doctor
 from migops.lifecycle import (
     create_ci,
@@ -40,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="command",
     )
 
-    # Basic inspection
+    # Inspection
 
     subparsers.add_parser(
         "doctor",
@@ -81,7 +82,25 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    # Smart Split
+    # Validate configuration
+
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate a MIGOps YAML configuration.",
+    )
+
+    validate_parser.add_argument(
+        "config",
+        help="Path to MIGOps YAML configuration.",
+    )
+
+    validate_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Return validation results as JSON.",
+    )
+
+    # Smart split
 
     split_parser = subparsers.add_parser(
         "split",
@@ -104,9 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    # =========================================================
-    # EASY CREATE
-    # =========================================================
+    # Easy create
 
     create_parser = subparsers.add_parser(
         "create",
@@ -116,31 +133,25 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument(
         "--gpu",
         default="0",
-        help="GPU index, UUID, or PCI bus ID.",
     )
 
     create_parser.add_argument(
         "--profile",
         required=True,
-        help="MIG profile name or ID.",
     )
 
     create_parser.add_argument(
         "--count",
         type=int,
         default=1,
-        help="Number of identical MIG instances to create (default: 1).",
     )
 
     create_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Preview without changing the GPU.",
     )
 
-    # =========================================================
-    # EASY DESTROY
-    # =========================================================
+    # Easy destroy
 
     destroy_parser = subparsers.add_parser(
         "destroy",
@@ -150,7 +161,6 @@ def build_parser() -> argparse.ArgumentParser:
     destroy_parser.add_argument(
         "--gpu",
         default="0",
-        help="GPU index, UUID, or PCI bus ID.",
     )
 
     destroy_target = (
@@ -161,13 +171,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     destroy_target.add_argument(
         "--gi",
-        help="Destroy this complete GPU Instance.",
     )
 
     destroy_target.add_argument(
         "--all",
         action="store_true",
-        help="Destroy every MIG instance on this GPU.",
     )
 
     destroy_parser.add_argument(
@@ -178,12 +186,9 @@ def build_parser() -> argparse.ArgumentParser:
     destroy_parser.add_argument(
         "--force",
         action="store_true",
-        help="Override MIGOps workload protection.",
     )
 
-    # =========================================================
-    # MIG MODE
-    # =========================================================
+    # MIG mode
 
     mode_parser = subparsers.add_parser(
         "mode",
@@ -227,9 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
         )
 
-    # =========================================================
-    # ADVANCED GPU INSTANCE COMMANDS
-    # =========================================================
+    # Advanced GI
 
     gi_parser = subparsers.add_parser(
         "gi",
@@ -308,9 +311,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    # =========================================================
-    # ADVANCED COMPUTE INSTANCE COMMANDS
-    # =========================================================
+    # Advanced CI
 
     ci_parser = subparsers.add_parser(
         "ci",
@@ -405,14 +406,10 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "doctor":
-        sys.exit(
-            command_doctor()
-        )
+        sys.exit(command_doctor())
 
     if args.command == "status":
-        sys.exit(
-            print_status()
-        )
+        sys.exit(print_status())
 
     if args.command == "profiles":
         sys.exit(
@@ -426,6 +423,14 @@ def main() -> None:
         sys.exit(
             print_users(
                 gpu=args.gpu,
+                json_output=args.json,
+            )
+        )
+
+    if args.command == "validate":
+        sys.exit(
+            print_validation(
+                path=args.config,
                 json_output=args.json,
             )
         )
