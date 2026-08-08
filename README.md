@@ -27,10 +27,16 @@ migops diff config.yaml
 migops apply config.yaml --dry-run
 migops snapshot
 migops doctor
+```
 
-Requirements
-Linux
-Python 3.9+
-NVIDIA driver
-nvidia-smi
-NVIDIA MIG-capable GPU for MIG operations
+## Requirements
+
+- Linux
+- Python 3.9+
+- NVIDIA driver
+- `nvidia-smi`
+- NVIDIA MIG-capable GPU for MIG operations
+
+## Status
+
+MIGOps is currently under active development.
