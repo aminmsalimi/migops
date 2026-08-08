@@ -19,3 +19,7 @@ Real desired-state changes ask for confirmation by default; `--yes` skips the pr
 `--force` bypasses MIGOps workload protection. It does not guarantee that the NVIDIA driver will accept the operation.
 
 MIG mode transitions can behave differently across GPU generations and driver versions. The NVIDIA driver remains the final authority.
+
+## Direct MIG mode commands
+
+`migops enable gpu <GPU>` and `migops disable gpu <GPU>` use workload detection as an advisory warning rather than a hard MIGOps block. They still require explicit confirmation, and the NVIDIA driver remains the final authority. `--force` is not required for these direct mode commands.

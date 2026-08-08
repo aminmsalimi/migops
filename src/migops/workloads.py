@@ -200,7 +200,7 @@ def query_compute_instances():
 
     return parse_compute_instances(output)
 
-def query_workloads() -> list[GpuProcess]:
+def _query_workloads_strict() -> list[GpuProcess]:
     """Return active NVIDIA GPU processes with MIG information where available."""
 
     output = run_nvidia_smi([])
@@ -336,3 +336,170 @@ def print_users(
     print()
 
     return 0
+
+def _query_workloads_fallback():
+    """
+    Best-effort workload discovery that does not require MIG GI/CI listing.
+
+    Some driver/permission combinations allow normal nvidia-smi process
+    queries but deny `nvidia-smi mig -lci`. In that case MIGOps should still
+    be able to report running GPU processes.
+    """
+
+    import csv
+    import io
+    import os
+    from types import SimpleNamespace
+
+    try:
+        import pwd
+    except ImportError:
+        pwd = None
+
+    # Build UUID -> physical GPU index mapping. `nvidia-smi -L` includes
+    # both physical GPU UUIDs and MIG device UUIDs.
+    uuid_to_gpu = {}
+    physical_gpu_indexes = []
+
+    gpu_csv = run_nvidia_smi(
+        [
+            "--query-gpu=index,uuid",
+            "--format=csv,noheader,nounits",
+        ]
+    )
+
+    for row in csv.reader(io.StringIO(gpu_csv)):
+        if len(row) < 2:
+            continue
+
+        index = row[0].strip()
+        uuid = row[1].strip()
+        physical_gpu_indexes.append(index)
+        uuid_to_gpu[uuid] = index
+
+    try:
+        inventory = run_nvidia_smi(["-L"])
+    except NvidiaSmiError:
+        inventory = ""
+
+    current_gpu = None
+
+    for raw_line in inventory.splitlines():
+        line = raw_line.strip()
+
+        if line.startswith("GPU ") and "(UUID:" in line:
+            try:
+                index = line.split(":", 1)[0].split()[1]
+                uuid = line.split("(UUID:", 1)[1].rstrip(")").strip()
+            except (IndexError, ValueError):
+                continue
+
+            current_gpu = index
+            uuid_to_gpu[uuid] = index
+            continue
+
+        if (
+            current_gpu is not None
+            and line.startswith("MIG ")
+            and "(UUID:" in line
+        ):
+            try:
+                mig_uuid = (
+                    line.split("(UUID:", 1)[1]
+                    .rstrip(")")
+                    .strip()
+                )
+            except (IndexError, ValueError):
+                continue
+
+            uuid_to_gpu[mig_uuid] = current_gpu
+
+    output = run_nvidia_smi(
+        [
+            "--query-compute-apps=pid,process_name,used_memory,gpu_uuid",
+            "--format=csv,noheader,nounits",
+        ]
+    )
+
+    if not output.strip():
+        return []
+
+    workloads = []
+
+    for row in csv.reader(io.StringIO(output)):
+        if len(row) < 4:
+            continue
+
+        pid_text = row[0].strip()
+        process_name = row[1].strip()
+        memory_text = row[2].strip()
+        gpu_uuid = row[3].strip()
+
+        try:
+            pid = int(pid_text)
+        except ValueError:
+            continue
+
+        try:
+            memory_mib = int(float(memory_text))
+        except ValueError:
+            memory_mib = None
+
+        gpu = uuid_to_gpu.get(gpu_uuid)
+
+        # On a one-GPU host, an unmapped MIG UUID still belongs to GPU 0
+        # (or whatever the only physical index is).
+        if gpu is None and len(physical_gpu_indexes) == 1:
+            gpu = physical_gpu_indexes[0]
+
+        username = None
+
+        if pwd is not None:
+            try:
+                uid = os.stat(f"/proc/{pid}").st_uid
+                username = pwd.getpwuid(uid).pw_name
+            except (FileNotFoundError, KeyError, PermissionError, OSError):
+                username = None
+
+        workloads.append(
+            SimpleNamespace(
+                gpu=gpu or "unknown",
+                pid=pid,
+                process_name=process_name,
+                memory_mib=memory_mib,
+                username=username,
+                gi=None,
+                ci=None,
+                gpu_uuid=gpu_uuid,
+            )
+        )
+
+    return workloads
+
+
+def query_workloads():
+    """
+    Return active NVIDIA workloads.
+
+    Use the normal MIG-aware implementation first. If that implementation
+    fails only because MIG instance inspection is permission-restricted,
+    fall back to ordinary nvidia-smi compute-process discovery.
+    """
+
+    try:
+        return _query_workloads_strict()
+    except NvidiaSmiError as exc:
+        message = str(exc).strip().lower()
+
+        permission_limited = (
+            "insufficient permissions" in message
+            or "permission denied" in message
+        )
+
+        if not permission_limited:
+            raise
+
+        try:
+            return _query_workloads_fallback()
+        except NvidiaSmiError:
+            raise exc

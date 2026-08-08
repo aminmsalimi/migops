@@ -137,7 +137,7 @@ def print_profiles(
             print(
                 f"{'Profile':<18}"
                 f"{'ID':<8}"
-                f"{'Available':<14}"
+                f"{'Free / Max':<14}"
                 f"{'Memory':<12}"
             )
             print("-" * 58)

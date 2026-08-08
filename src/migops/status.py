@@ -193,7 +193,11 @@ def print_status() -> int:
         return 1
 
     driver_versions = sorted(
-        {gpu.driver_version for gpu in gpus}
+        {
+            gpu.driver_version
+            for gpu in gpus
+            if gpu.driver_version
+        }
     )
 
     print_check("PASS", f"NVIDIA GPUs detected: {len(gpus)}")
@@ -204,22 +208,32 @@ def print_status() -> int:
             f"NVIDIA driver: {', '.join(driver_versions)}",
         )
 
+    # Keep CI inspection and workload inspection independent. A permission
+    # problem in one must never be silently converted into "zero".
+    compute_instances = None
+    compute_instances_error = None
+    workloads = None
+    workloads_error = None
+
     try:
         from migops.workloads import (
             query_compute_instances,
             query_workloads,
         )
 
-        compute_instances = query_compute_instances()
+        try:
+            compute_instances = query_compute_instances()
+        except NvidiaSmiError as exc:
+            compute_instances_error = str(exc)
 
         try:
             workloads = query_workloads()
-        except NvidiaSmiError:
-            workloads = []
+        except NvidiaSmiError as exc:
+            workloads_error = str(exc)
 
-    except Exception:
-        compute_instances = []
-        workloads = []
+    except (ImportError, AttributeError) as exc:
+        compute_instances_error = str(exc)
+        workloads_error = str(exc)
 
     print()
 
@@ -264,52 +278,100 @@ def print_status() -> int:
                     "MIG enabled but no MIG devices created",
                 )
 
-            gpu_compute_instances = [
-                instance
-                for instance in compute_instances
-                if instance.gpu == gpu.index
-            ]
-
-            if gpu_compute_instances:
-                print_check(
-                    "PASS",
-                    "Compute Instances detected: "
-                    f"{len(gpu_compute_instances)}",
+            if compute_instances is None:
+                warning_count += 1
+                detail = (
+                    compute_instances_error
+                    or "query unavailable"
                 )
+                print_check(
+                    "WARN",
+                    "Compute Instance details unavailable: "
+                    f"{detail}",
+                )
+
+                if gpu.mig_devices:
+                    print_check(
+                        "INFO",
+                        "MIG devices are present; CI count was not "
+                        "reported because the detailed query was unavailable.",
+                    )
             else:
-                print_check(
-                    "INFO",
-                    "No MIG Compute Instances detected",
-                )
+                gpu_compute_instances = [
+                    instance
+                    for instance in compute_instances
+                    if getattr(instance, "gpu", None) == gpu.index
+                ]
 
-        gpu_workloads = [
-            process
-            for process in workloads
-            if process.gpu == gpu.index
-        ]
+                if gpu_compute_instances:
+                    print_check(
+                        "PASS",
+                        "Compute Instances detected: "
+                        f"{len(gpu_compute_instances)}",
+                    )
+                elif gpu.mig_devices:
+                    # nvidia-smi -L already proved usable MIG devices exist.
+                    # Do not claim there are no CIs if the detailed parser
+                    # cannot map this driver generation perfectly.
+                    print_check(
+                        "INFO",
+                        "MIG devices are active; detailed CI mapping "
+                        "reported no separately mapped entries.",
+                    )
+                else:
+                    print_check(
+                        "INFO",
+                        "No MIG Compute Instances detected",
+                    )
 
-        if gpu_workloads:
+        if workloads is None:
             warning_count += 1
+            detail = workloads_error or "query unavailable"
             print_check(
                 "WARN",
-                f"Active GPU processes: {len(gpu_workloads)}",
+                "GPU workload status unavailable: "
+                f"{detail}",
             )
-
-            for process in gpu_workloads:
-                user = process.username or "unknown"
-                memory = (
-                    f"{process.memory_mib} MiB"
-                    if process.memory_mib is not None
-                    else "N/A"
-                )
-
-                print(
-                    f"       PID {process.pid} | "
-                    f"{user} | {memory} | "
-                    f"{process.process_name}"
-                )
         else:
-            print_check("PASS", "No active GPU processes detected")
+            gpu_workloads = [
+                process
+                for process in workloads
+                if getattr(process, "gpu", None) == gpu.index
+            ]
+
+            if gpu_workloads:
+                warning_count += 1
+                print_check(
+                    "WARN",
+                    f"Active GPU processes: {len(gpu_workloads)}",
+                )
+
+                for process in gpu_workloads:
+                    user = (
+                        getattr(process, "username", None)
+                        or "unknown"
+                    )
+                    memory_mib = getattr(
+                        process,
+                        "memory_mib",
+                        None,
+                    )
+                    memory = (
+                        f"{memory_mib} MiB"
+                        if memory_mib is not None
+                        else "N/A"
+                    )
+
+                    print(
+                        f"       PID {getattr(process, 'pid', '?')} | "
+                        f"{user} | {memory} | "
+                        f"{getattr(process, 'process_name', 'unknown')}"
+                    )
+            else:
+                print_check(
+                    "PASS",
+                    "No active GPU processes detected",
+                )
 
         print()
 
@@ -330,3 +392,4 @@ def print_status() -> int:
         print("MIGOps readiness: READY")
 
     return 0
+

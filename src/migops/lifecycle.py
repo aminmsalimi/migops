@@ -822,92 +822,59 @@ def mode_status(
 
 def set_mig_mode(
     gpu: str,
-    *,
     enabled: bool,
     dry_run: bool = False,
     force: bool = False,
 ) -> int:
-    """Enable or disable MIG mode safely."""
+    """
+    Enable or disable MIG mode.
 
-    desired = (
-        "Enabled"
-        if enabled
-        else "Disabled"
-    )
+    Direct mode changes are deliberately not blocked by MIGOps workload
+    detection. The CLI already requires explicit confirmation, and the
+    NVIDIA driver is the final authority on whether the transition is safe
+    and possible.
 
-    try:
-        selected = resolve_gpu(
-            gpu
-        )
+    Workload detection is advisory here:
+    - active workloads produce a warning
+    - a permission/query failure produces a warning
+    - neither requires --force
 
-        current = (
-            selected.mig_mode
-            .strip()
-            .lower()
-        )
+    `force` remains accepted for backwards compatibility but is not required
+    for direct enable/disable commands.
+    """
 
-        if current == desired.lower():
-            print()
+    if not dry_run:
+        try:
+            workloads = get_matching_workloads(gpu)
+        except NvidiaSmiError as exc:
             print(
-                f"MIG mode is already {desired.lower()} "
-                f"on GPU {selected.index}."
+                "[WARN] Workload preflight unavailable: "
+                f"{exc}"
             )
-            return 0
-
-        check_workload_safety(
-            gpu_index=selected.index,
-            force=force,
-        )
-
-        if not enabled:
-            instances = query_gpu_instances(
-                selected.index
+            print(
+                "[INFO] Continuing with the native NVIDIA MIG-mode "
+                "request; the NVIDIA driver remains the final authority."
             )
-
-            if instances and not force:
-                raise MigSafetyError(
-                    f"{len(instances)} GPU Instance(s) still exist. "
-                    "Run `migops destroy --gpu "
-                    f"{selected.index} --all` first."
+        else:
+            if workloads:
+                print(
+                    "[WARN] Active GPU workload(s) detected on "
+                    f"GPU {gpu}: {len(workloads)}"
+                )
+                print(
+                    "[INFO] Continuing because direct MIG-mode commands "
+                    "do not require --force. The NVIDIA driver may still "
+                    "reject the transition if it cannot be performed."
                 )
 
-    except (
-        NvidiaSmiError,
-        ValueError,
-        MigSafetyError,
-    ) as exc:
-        print()
-        print("[BLOCKED]")
-        print()
-        print(str(exc))
-        return 1
-
-    command = build_mode_command(
-        selected.index,
-        enabled,
-    )
-
-    print()
-    print("MIGOps MIG Mode")
-    print("===============")
-    print()
-
-    print(
-        f"{selected.mig_mode} -> {desired}"
-    )
-
-    print()
-
-    result = execute_operation(
-        command,
+    return execute_operation(
+        build_mode_command(
+            gpu,
+            enabled,
+        ),
         dry_run=dry_run,
     )
 
-    if dry_run:
-        print()
-        print("DRY RUN - no changes were made.")
-
-    return result
 
 
 # ============================================================
