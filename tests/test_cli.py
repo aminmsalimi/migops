@@ -11,9 +11,17 @@ class TestCLI(unittest.TestCase):
         self.parser = build_parser()
 
     def test_top_level_commands_are_registered(self):
-        help_text = self.parser.format_help()
+        import argparse
 
-        for command in (
+        subparser_action = next(
+            action
+            for action in self.parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+
+        commands = set(subparser_action.choices)
+
+        expected = {
             "status",
             "profiles",
             "users",
@@ -31,11 +39,11 @@ class TestCLI(unittest.TestCase):
             "destroy",
             "gi",
             "ci",
-        ):
-            self.assertIn(command, help_text)
+        }
 
-        self.assertNotIn("doctor", help_text)
-        self.assertNotIn("mode", help_text)
+        self.assertTrue(expected.issubset(commands))
+        self.assertNotIn("doctor", commands)
+        self.assertNotIn("mode", commands)
 
     def test_recommend_syntax(self):
         args = self.parser.parse_args(
