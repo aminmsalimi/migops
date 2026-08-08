@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "migops"
+version = "0.1.0"
+description = "Safe operations CLI for NVIDIA Multi-Instance GPU (MIG) environments."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+
+authors = [
+    { name = "Mohammad Amin Salimi" }
+]
+
+keywords = [
+    "nvidia",
+    "gpu",
+    "mig",
+    "cuda",
+    "ai-infrastructure",
+    "gpu-operations"
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration"
+]
+
+dependencies = []
+
+
+[project.scripts]
+migops = "migops.cli:main"
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
