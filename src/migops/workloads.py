@@ -173,21 +173,32 @@ def parse_processes(output: str) -> list[GpuProcess]:
 
     return processes
 
-
-def query_compute_instances() -> list[ComputeInstance]:
+def query_compute_instances():
     """
-    Query current MIG compute instances.
+    Return current MIG Compute Instances.
 
-    Returns an empty list when MIG compute instances are not available.
+    NVIDIA can return a non-zero exit status with:
+    "No compute instances found: Not Found"
+
+    That means zero CIs exist; it is not a fatal error.
     """
 
     try:
-        output = run_nvidia_smi(["mig", "-lci"])
-    except NvidiaSmiError:
-        return []
+        output = run_nvidia_smi(
+            ["mig", "-lci"]
+        )
+    except NvidiaSmiError as exc:
+        message = str(exc).strip().lower()
+
+        if (
+            "no compute instances found" in message
+            or "no compute instance found" in message
+        ):
+            return []
+
+        raise
 
     return parse_compute_instances(output)
-
 
 def query_workloads() -> list[GpuProcess]:
     """Return active NVIDIA GPU processes with MIG information where available."""

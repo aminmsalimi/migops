@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fixed false MIG safety blocking when MIG mode is enabled with zero GPU/Compute Instances; NVIDIA `No ... instances found` responses are now treated as normal empty state.
+
 ### Changed
 
 - Merged environment diagnostics into `migops status` and removed the separate `migops doctor` command.

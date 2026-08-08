@@ -93,6 +93,28 @@ def resolve_gpu(selector: str) -> GPU:
         f"GPU '{selector}' was not found."
     )
 
+def _is_empty_instance_result(
+    error: NvidiaSmiError,
+    *,
+    instance_type: str,
+) -> bool:
+    """Return True when NVIDIA only reports that no instances exist."""
+
+    message = str(error).strip().lower()
+
+    if instance_type == "gi":
+        return (
+            "no gpu instances found" in message
+            or "no gpu instance found" in message
+        )
+
+    if instance_type == "ci":
+        return (
+            "no compute instances found" in message
+            or "no compute instance found" in message
+        )
+
+    return False
 
 def query_gpu_instances(
     gpu: str | None = None,
@@ -104,10 +126,18 @@ def query_gpu_instances(
     if gpu is not None:
         arguments.extend(["-i", gpu])
 
-    output = run_nvidia_smi(arguments)
+    try:
+        output = run_nvidia_smi(arguments)
+    except NvidiaSmiError as exc:
+        if _is_empty_instance_result(
+            exc,
+            instance_type="gi",
+        ):
+            return []
+
+        raise
 
     return parse_gpu_instances(output)
-
 
 def query_ci_instances(
     gpu: str | None = None,
@@ -123,15 +153,18 @@ def query_ci_instances(
     if gpu is not None:
         arguments.extend(["-i", gpu])
 
-    output = run_nvidia_smi(arguments)
+    try:
+        output = run_nvidia_smi(arguments)
+    except NvidiaSmiError as exc:
+        if _is_empty_instance_result(
+            exc,
+            instance_type="ci",
+        ):
+            return []
+
+        raise
 
     return parse_compute_instances(output)
-
-
-# ============================================================
-# COMMAND BUILDERS
-# ============================================================
-
 
 def build_mode_command(
     gpu: str,
