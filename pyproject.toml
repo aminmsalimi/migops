@@ -34,6 +34,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.13",
     "Topic :: System :: Systems Administration"
 ]
 
@@ -41,6 +43,11 @@ dependencies = [
     "PyYAML>=6.0"
 ]
 
+
+[project.urls]
+Homepage = "https://github.com/aminmsalimi/migops"
+Repository = "https://github.com/aminmsalimi/migops"
+Issues = "https://github.com/aminmsalimi/migops/issues"
 
 [project.scripts]
 migops = "migops.cli:main"

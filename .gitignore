@@ -27,3 +27,4 @@ snapshots/
 *.log
 .migops-backup/
 upgrade_migops_desired_state.py
+finalize_migops_v010.py

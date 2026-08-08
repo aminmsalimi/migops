@@ -60,6 +60,8 @@ class ValidationResult:
 
 
 def parse_config_data(data: object) -> MigOpsConfig:
+    """Convert raw YAML data to a validated MIGOps configuration."""
+
     if not isinstance(data, dict):
         raise ConfigError("Configuration root must be a YAML mapping.")
 
@@ -186,6 +188,8 @@ def parse_config_data(data: object) -> MigOpsConfig:
 
 
 def load_config(path: str | Path) -> MigOpsConfig:
+    """Load a MIGOps YAML configuration."""
+
     config_path = Path(path)
 
     if not config_path.exists():
@@ -219,6 +223,8 @@ def resolve_gpu(
     selector: str,
     available_gpus: list[GPU],
 ) -> GPU | None:
+    """Resolve a GPU by index, UUID, or PCI bus ID."""
+
     selector_lower = selector.lower()
 
     for gpu in available_gpus:
@@ -238,6 +244,8 @@ def find_profile(
     requested: str,
     profiles: list[MigProfile],
 ) -> MigProfile | None:
+    """Resolve a profile by profile name or NVIDIA profile ID."""
+
     requested_lower = requested.lower()
 
     for profile in profiles:
@@ -250,15 +258,49 @@ def find_profile(
     return None
 
 
+def canonical_profile_counts(
+    desired: GPUConfig,
+    profiles: list[MigProfile],
+) -> dict[str, int]:
+    """
+    Return desired profile counts using canonical NVIDIA profile names.
+
+    This keeps profile IDs and profile names equivalent throughout diff,
+    plan, apply, and verification.
+    """
+
+    counts: dict[str, int] = {}
+
+    for request in desired.instances:
+        supported = find_profile(
+            request.profile,
+            profiles,
+        )
+
+        if supported is None:
+            raise ConfigError(
+                f"Profile '{request.profile}' is not supported "
+                "or was not reported by the NVIDIA driver."
+            )
+
+        counts[supported.name] = (
+            counts.get(supported.name, 0)
+            + request.count
+        )
+
+    return counts
+
+
 def validate_gpu_config(
     desired: GPUConfig,
     actual_gpu: GPU,
     profiles: list[MigProfile],
 ) -> GPUValidationResult:
+    """Validate one desired GPU configuration."""
+
     messages: list[ValidationMessage] = []
     valid = True
     requested_memory = 0.0
-
     current_mode = actual_gpu.mig_mode.strip().lower()
 
     if desired.mig_enabled:
@@ -314,6 +356,8 @@ def validate_gpu_config(
             messages=messages,
         )
 
+    canonical_seen: set[str] = set()
+
     for request in desired.instances:
         supported = find_profile(
             request.profile,
@@ -332,6 +376,22 @@ def validate_gpu_config(
                 )
             )
             continue
+
+        if supported.name in canonical_seen:
+            valid = False
+            messages.append(
+                ValidationMessage(
+                    level="FAIL",
+                    message=(
+                        f"Profile '{request.profile}' resolves to "
+                        f"'{supported.name}', which is already defined. "
+                        "Combine the counts into one entry."
+                    ),
+                )
+            )
+            continue
+
+        canonical_seen.add(supported.name)
 
         if request.count > supported.total:
             valid = False
@@ -388,6 +448,8 @@ def validate_gpu_config(
 def validate_config(
     config: MigOpsConfig,
 ) -> ValidationResult:
+    """Validate desired configuration against detected NVIDIA hardware."""
+
     try:
         available_gpus = query_gpus()
     except NvidiaSmiError as exc:
@@ -468,6 +530,8 @@ def print_validation(
     path: str,
     json_output: bool = False,
 ) -> int:
+    """Load, validate, and print a desired-state configuration."""
+
     try:
         config = load_config(path)
         result = validate_config(config)

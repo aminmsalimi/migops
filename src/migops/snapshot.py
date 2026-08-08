@@ -21,6 +21,8 @@ class SnapshotError(RuntimeError):
 def snapshot_data(
     gpu_selector: str | None = None,
 ) -> dict:
+    """Collect the current standard MIG GI layout."""
+
     try:
         gpus = query_gpus()
     except NvidiaSmiError as exc:
@@ -95,6 +97,9 @@ def snapshot_data(
                 timezone.utc
             ).isoformat(),
             "host": platform.node() or "unknown",
+            "restore_scope": (
+                "GI profile counts with one default CI per GI"
+            ),
         },
         "gpus": entries,
     }
@@ -104,6 +109,8 @@ def write_snapshot(
     output: str | None = None,
     gpu: str | None = None,
 ) -> Path:
+    """Write a MIGOps snapshot YAML file."""
+
     data = snapshot_data(gpu)
 
     if output:
@@ -143,6 +150,8 @@ def print_snapshot(
     output: str | None = None,
     gpu: str | None = None,
 ) -> int:
+    """Create a snapshot and print its path."""
+
     try:
         path = write_snapshot(
             output,
@@ -166,6 +175,10 @@ def print_snapshot(
     print()
     print(
         f"[PASS] Snapshot saved: {path}"
+    )
+    print(
+        "[INFO] Snapshot restores GI profile counts "
+        "with default Compute Instances."
     )
 
     return 0

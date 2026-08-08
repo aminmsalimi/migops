@@ -9,11 +9,13 @@ import json
 from migops.config import (
     ConfigError,
     MigOpsConfig,
+    canonical_profile_counts,
     load_config,
     resolve_gpu,
 )
 from migops.lifecycle import query_gpu_instances
 from migops.nvidia import NvidiaSmiError
+from migops.profiles import query_profiles
 from migops.status import query_gpus
 
 
@@ -35,18 +37,11 @@ class DiffResult:
     gpus: list[GPUDiff]
 
 
-def desired_counts(
-    config_gpu,
-) -> dict[str, int]:
-    return {
-        request.profile: request.count
-        for request in config_gpu.instances
-    }
-
-
 def current_counts(
     gpu_index: str,
 ) -> dict[str, int]:
+    """Return current GI counts grouped by canonical profile name."""
+
     instances = query_gpu_instances(
         gpu_index
     )
@@ -62,6 +57,8 @@ def current_counts(
 def diff_config_object(
     config: MigOpsConfig,
 ) -> DiffResult:
+    """Compare desired configuration with current hardware state."""
+
     try:
         actual_gpus = query_gpus()
     except NvidiaSmiError as exc:
@@ -85,9 +82,10 @@ def diff_config_object(
                     gpu_name=None,
                     desired_mig_enabled=desired.mig_enabled,
                     actual_mig_enabled=None,
-                    desired_profiles=desired_counts(
-                        desired
-                    ),
+                    desired_profiles={
+                        request.profile: request.count
+                        for request in desired.instances
+                    },
                     actual_profiles={},
                     changed=True,
                 )
@@ -114,11 +112,19 @@ def diff_config_object(
                     f"for GPU {actual.index}: {exc}"
                 ) from exc
 
-        desired_profiles = (
-            desired_counts(desired)
-            if desired.mig_enabled
-            else {}
-        )
+        desired_profiles: dict[str, int] = {}
+
+        if desired.mig_enabled:
+            try:
+                desired_profiles = canonical_profile_counts(
+                    desired,
+                    query_profiles(actual.index),
+                )
+            except NvidiaSmiError as exc:
+                raise ConfigError(
+                    "Unable to query MIG profiles "
+                    f"for GPU {actual.index}: {exc}"
+                ) from exc
 
         changed = (
             desired.mig_enabled != actual_enabled
@@ -139,10 +145,7 @@ def diff_config_object(
         )
 
     return DiffResult(
-        changed=any(
-            item.changed
-            for item in results
-        ),
+        changed=any(item.changed for item in results),
         gpus=results,
     )
 
@@ -151,6 +154,8 @@ def print_diff(
     path: str,
     json_output: bool = False,
 ) -> int:
+    """Print desired-vs-actual configuration drift."""
+
     try:
         result = diff_config_object(
             load_config(path)
@@ -237,7 +242,6 @@ def print_diff(
                     profile,
                     0,
                 )
-
                 actual = item.actual_profiles.get(
                     profile,
                     0,

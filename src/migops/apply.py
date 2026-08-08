@@ -8,6 +8,7 @@ from pathlib import Path
 from migops.config import (
     ConfigError,
     MigOpsConfig,
+    canonical_profile_counts,
     load_config,
     resolve_gpu,
     validate_config,
@@ -21,14 +22,39 @@ from migops.lifecycle import (
     check_workload_safety,
     execute_operation,
     execute_sequence,
+    get_matching_workloads,
     query_gpu_instances,
 )
 from migops.nvidia import NvidiaSmiError
+from migops.profiles import query_profiles
 from migops.snapshot import (
     SnapshotError,
     write_snapshot,
 )
 from migops.status import query_gpus
+
+
+def requires_workload_check(
+    *,
+    current_enabled: bool,
+    desired_enabled: bool,
+    current_profiles: dict[str, int],
+    desired_profiles: dict[str, int],
+) -> bool:
+    """
+    Return True when an operation may disrupt current GPU workloads.
+
+    Mode changes and replacement/removal of an existing MIG layout are
+    considered disruptive.
+    """
+
+    if current_enabled != desired_enabled:
+        return True
+
+    if current_profiles and current_profiles != desired_profiles:
+        return True
+
+    return False
 
 
 def _apply_object(
@@ -109,6 +135,8 @@ def _apply_object(
         )
         return 1
 
+    # Full pre-flight before any real change. This avoids changing GPU 0
+    # and only then discovering a safety problem on GPU 1.
     try:
         actual_gpus = query_gpus()
 
@@ -123,24 +151,17 @@ def _apply_object(
                     f"GPU '{desired.gpu}' was not found."
                 )
 
-            current_gis = (
-                query_gpu_instances(actual.index)
-                if (
-                    actual.mig_mode
-                    .strip()
-                    .lower()
-                    == "enabled"
-                )
-                else []
+            current_enabled = (
+                actual.mig_mode
+                .strip()
+                .lower()
+                == "enabled"
             )
 
-            desired_profiles = (
-                {
-                    request.profile: request.count
-                    for request in desired.instances
-                }
-                if desired.mig_enabled
-                else {}
+            current_gis = (
+                query_gpu_instances(actual.index)
+                if current_enabled
+                else []
             )
 
             current_profiles: dict[str, int] = {}
@@ -154,16 +175,38 @@ def _apply_object(
                     + 1
                 )
 
-            destructive = (
-                bool(current_gis)
-                and (
-                    not desired.mig_enabled
-                    or current_profiles
-                    != desired_profiles
+            desired_profiles: dict[str, int] = {}
+
+            if desired.mig_enabled:
+                desired_profiles = canonical_profile_counts(
+                    desired,
+                    query_profiles(actual.index),
                 )
+
+            disruptive = requires_workload_check(
+                current_enabled=current_enabled,
+                desired_enabled=desired.mig_enabled,
+                current_profiles=current_profiles,
+                desired_profiles=desired_profiles,
             )
 
-            if destructive:
+            if not disruptive:
+                continue
+
+            if dry_run:
+                workloads = get_matching_workloads(
+                    actual.index
+                )
+
+                if workloads:
+                    print(
+                        f"[WARN] GPU {actual.index}: "
+                        f"{len(workloads)} active workload(s) "
+                        "would block a real apply unless --force "
+                        "is used intentionally."
+                    )
+
+            else:
                 check_workload_safety(
                     actual.index,
                     force=force,
@@ -256,14 +299,13 @@ def _apply_object(
                     + 1
                 )
 
-            desired_profiles = (
-                {
-                    request.profile: request.count
-                    for request in desired.instances
-                }
-                if desired.mig_enabled
-                else {}
-            )
+            desired_profiles: dict[str, int] = {}
+
+            if desired.mig_enabled:
+                desired_profiles = canonical_profile_counts(
+                    desired,
+                    query_profiles(actual.index),
+                )
 
             if not desired.mig_enabled:
                 if current_gis:
@@ -338,12 +380,12 @@ def _apply_object(
                     if result != 0:
                         return 1
 
-                for request in desired.instances:
+                for profile_name, count in desired_profiles.items():
                     result = execute_operation(
                         build_easy_create_command(
                             actual.index,
-                            request.profile,
-                            request.count,
+                            profile_name,
+                            count,
                         ),
                         dry_run=dry_run,
                     )
@@ -414,6 +456,8 @@ def apply_config(
     force: bool = False,
     snapshot_dir: str = "snapshots",
 ) -> int:
+    """Apply a desired-state YAML configuration."""
+
     try:
         config = load_config(path)
     except ConfigError as exc:
@@ -443,6 +487,8 @@ def apply_config_object(
     snapshot_dir: str = "snapshots",
     source_label: str = "generated configuration",
 ) -> int:
+    """Apply an in-memory desired-state configuration."""
+
     return _apply_object(
         config,
         dry_run=dry_run,
@@ -460,6 +506,20 @@ def restore_snapshot(
     yes: bool = False,
     force: bool = False,
 ) -> int:
+    """
+    Restore a standard MIGOps snapshot.
+
+    Snapshots currently restore GI profile counts and recreate one default
+    CI per GI. They are not intended to preserve advanced custom CI
+    sub-partitioning.
+    """
+
+    print()
+    print(
+        "[INFO] Restore recreates GI profile counts with "
+        "default Compute Instances."
+    )
+
     return apply_config(
         path,
         dry_run=dry_run,

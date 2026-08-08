@@ -10,6 +10,7 @@ from migops.config import (
 )
 from migops.diffing import diff_config_object
 from migops.lifecycle import GpuInstance
+from migops.profiles import MigProfile
 from migops.status import GPU
 
 
@@ -19,11 +20,15 @@ class TestDiff(unittest.TestCase):
         "migops.diffing.query_gpu_instances"
     )
     @patch(
+        "migops.diffing.query_profiles"
+    )
+    @patch(
         "migops.diffing.query_gpus"
     )
     def test_matching_configuration(
         self,
         mock_gpus,
+        mock_profiles,
         mock_instances,
     ):
         mock_gpus.return_value = [
@@ -34,6 +39,17 @@ class TestDiff(unittest.TestCase):
                 driver_version="580",
                 pci_bus_id="00000000:31:00.0",
                 mig_mode="Enabled",
+            )
+        ]
+
+        mock_profiles.return_value = [
+            MigProfile(
+                gpu="0",
+                name="3g.40gb",
+                profile_id="9",
+                free=1,
+                total=2,
+                memory_gib=40.0,
             )
         ]
 
@@ -65,7 +81,9 @@ class TestDiff(unittest.TestCase):
             )
         )
 
-        self.assertFalse(result.changed)
+        self.assertFalse(
+            result.changed
+        )
 
 
 if __name__ == "__main__":
