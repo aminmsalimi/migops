@@ -7,6 +7,7 @@ import sys
 from migops import __version__
 from migops.profiles import print_profiles
 from migops.status import print_status
+from migops.workloads import print_users
 
 
 def print_check(status: str, message: str) -> None:
@@ -58,6 +59,7 @@ def command_doctor() -> int:
             text=True,
             check=False,
         )
+
     except OSError as exc:
         print_check(
             "FAIL",
@@ -141,6 +143,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output profile information as JSON.",
     )
 
+    # users
+    users_parser = subparsers.add_parser(
+        "users",
+        help="Show processes currently using NVIDIA GPUs or MIG instances.",
+    )
+
+    users_parser.add_argument(
+        "--gpu",
+        help="Only show processes using this GPU index.",
+    )
+
+    users_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output workload information as JSON.",
+    )
+
     return parser
 
 
@@ -157,6 +176,14 @@ def main() -> None:
     if args.command == "profiles":
         sys.exit(
             print_profiles(
+                gpu=args.gpu,
+                json_output=args.json,
+            )
+        )
+
+    if args.command == "users":
+        sys.exit(
+            print_users(
                 gpu=args.gpu,
                 json_output=args.json,
             )
