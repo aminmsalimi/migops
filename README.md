@@ -2,28 +2,23 @@
 
 MIGOps is a Python CLI for safe NVIDIA Multi-Instance GPU (MIG) operations on Linux GPU hosts.
 
-It complements NVIDIA's native MIG tooling with workload-aware safety checks, smart partition recommendations, desired-state YAML, dry-run planning, drift detection, snapshots, restore, and verified apply workflows.
+It complements NVIDIA's native MIG tooling with workload-aware safety checks, smart partition recommendations, configuration planning, snapshots, drift detection, and safe apply workflows.
 
 ## Features
 
 - GPU and MIG status
 - MIG profile discovery
-- Active GPU/MIG workload discovery
-- MIG diagnostics
-- Smart equal-memory split recommendations
-- Easy MIG creation (`GI + default CI`)
-- Safe MIG destruction (`CI -> GI`)
+- Active GPU/MIG workload detection
+- Smart equal-memory MIG splitting
+- Easy MIG creation and destruction
 - MIG mode enable/disable
-- Advanced GI and CI operations
+- Advanced GI and CI management
 - YAML desired-state configuration
-- Configuration validation
-- Desired-vs-actual drift detection
-- Change planning and risk reporting
-- Configuration snapshots
-- Restore workflow
-- Safe apply with automatic pre-change snapshot
-- JSON output for automation-oriented commands
-- Automated unit tests and GitHub Actions CI
+- Validate, diff, and plan workflows
+- Snapshots and restore
+- Safe apply with workload checks and dry-run
+- JSON output for automation
+- Automated tests and GitHub Actions CI
 
 ## Requirements
 
@@ -49,7 +44,7 @@ python -m pip install -e .
 
 ## Quick Start
 
-Inspect the host:
+Inspect the system:
 
 ```bash
 migops doctor
@@ -58,28 +53,27 @@ migops profiles
 migops users
 ```
 
-Smart split planning:
+Recommend an equal MIG split:
 
 ```bash
-migops split --gpu 0 --instances 2
 migops split --gpu 0 --instances 4
 ```
 
-Preview actually applying a smart split:
+Preview applying it:
 
 ```bash
-migops split --gpu 0 --instances 4 --apply --dry-run
+sudo migops split --gpu 0 --instances 4 --apply --dry-run
 ```
 
-Execute it deliberately:
+Apply it:
 
 ```bash
 sudo migops split --gpu 0 --instances 4 --apply --yes
 ```
 
-MIGOps selects the best identical profile reported by the installed NVIDIA driver; it does not invent unsupported memory sizes.
+MIGOps selects from MIG profiles reported by the installed NVIDIA driver rather than inventing unsupported partition sizes.
 
-## Easy Lifecycle Commands
+## MIG Management
 
 Enable or disable MIG mode:
 
@@ -88,21 +82,26 @@ sudo migops mode enable --gpu 0
 sudo migops mode disable --gpu 0
 ```
 
-Create complete usable MIG instances (GI + default CI):
+Create complete MIG instances:
 
 ```bash
 sudo migops create --gpu 0 --profile 3g.40gb
 sudo migops create --gpu 0 --profile 3g.40gb --count 2
 ```
 
-Safely destroy MIG instances:
+Destroy them safely:
 
 ```bash
 sudo migops destroy --gpu 0 --gi 2
 sudo migops destroy --gpu 0 --all
 ```
 
-Use `--dry-run` before destructive operations whenever possible.
+Advanced GI and CI commands are also available through:
+
+```bash
+migops gi --help
+migops ci --help
+```
 
 ## Desired-State Configuration
 
@@ -121,84 +120,49 @@ gpus:
 
       - profile: "2g.20gb"
         count: 1
-
-      - profile: "1g.10gb"
-        count: 2
 ```
 
-Validate, diff, and plan:
+Validate, compare, and plan:
 
 ```bash
-migops validate examples/h100-mixed.yaml
-migops diff examples/h100-mixed.yaml
-migops plan examples/h100-mixed.yaml
+migops validate config.yaml
+migops diff config.yaml
+migops plan config.yaml
 ```
 
-Preview an apply:
+Preview and apply:
 
 ```bash
-sudo migops apply examples/h100-mixed.yaml --dry-run
+sudo migops apply config.yaml --dry-run
+sudo migops apply config.yaml --yes
 ```
 
-Execute:
+## Snapshots
 
-```bash
-sudo migops apply examples/h100-mixed.yaml --yes
-```
-
-Before a real apply, MIGOps creates a snapshot of the current state and blocks destructive changes when active GPU workloads are detected unless `--force` is explicitly used.
-
-## Snapshots and Restore
-
-Create a snapshot:
+Save the current MIG configuration:
 
 ```bash
 migops snapshot
 ```
 
-Or choose an output path:
+Restore a previous snapshot:
 
 ```bash
-migops snapshot --gpu 0 --output before-maintenance.yaml
+sudo migops restore snapshot.yaml --dry-run
+sudo migops restore snapshot.yaml --yes
 ```
 
-Preview restore:
-
-```bash
-sudo migops restore before-maintenance.yaml --dry-run
-```
-
-Execute restore:
-
-```bash
-sudo migops restore before-maintenance.yaml --yes
-```
-
-## Advanced GI / CI Commands
-
-The simple workflow is recommended for normal administration. Advanced commands remain available when direct control is required:
-
-```bash
-migops gi list --gpu 0
-migops gi create --gpu 0 --profile 3g.40gb --with-ci
-migops gi delete --gpu 0 --gi 2
-
-migops ci list --gpu 0
-migops ci create --gpu 0 --gi 2 --profile 0
-migops ci delete --gpu 0 --gi 2 --ci 0
-```
-
-## Safety Model
+## Safety
 
 MIGOps is intentionally conservative:
 
-- destructive changes are workload-checked
-- `--dry-run` previews operations
-- desired-state `apply` requires `--yes` for real changes
-- a snapshot is taken before a real desired-state apply
-- CIs are removed before GIs
-- final state is verified after apply
-- NVIDIA's driver remains the final authority on supported geometry and placement
+- detects active GPU workloads before destructive changes
+- supports `--dry-run`
+- requires `--yes` for desired-state changes
+- creates a snapshot before real apply operations
+- removes CIs before GIs
+- verifies the final configuration after apply
+- leaves final hardware validation to the NVIDIA driver
 
 ## Tests
 
