@@ -1,4 +1,4 @@
-"""Automatic MIG partition recommendation."""
+"""Automatic MIG partition recommendation and optional safe application."""
 
 from __future__ import annotations
 
@@ -8,8 +8,20 @@ import json
 import re
 from dataclasses import asdict, dataclass
 
-from migops.nvidia import NvidiaSmiError, run_nvidia_smi
-from migops.profiles import MigProfile, query_profiles
+from migops.apply import apply_config_object
+from migops.config import (
+    GPUConfig,
+    MigOpsConfig,
+    ProfileRequest,
+)
+from migops.nvidia import (
+    NvidiaSmiError,
+    run_nvidia_smi,
+)
+from migops.profiles import (
+    MigProfile,
+    query_profiles,
+)
 
 
 STANDARD_PROFILE_RE = re.compile(
@@ -37,25 +49,19 @@ class SplitRecommendation:
     gpu_name: str
     gpu_memory_gib: float
     mig_mode: str
-
     requested_instances: int
     target_memory_gib: float
-
     profile: str
     profile_id: str
     profile_memory_gib: float
     max_instances: int
-
     allocated_memory_gib: float
     memory_coverage_percent: float
-
     acceptable: bool
     message: str
 
 
 def query_physical_gpus() -> list[PhysicalGPU]:
-    """Query physical GPU identity, memory and MIG mode."""
-
     output = run_nvidia_smi(
         [
             (
@@ -67,12 +73,13 @@ def query_physical_gpus() -> list[PhysicalGPU]:
         ]
     )
 
-    reader = csv.reader(io.StringIO(output))
+    reader = csv.reader(
+        io.StringIO(output)
+    )
 
     gpus: list[PhysicalGPU] = []
 
     for row in reader:
-
         if len(row) != 6:
             continue
 
@@ -82,7 +89,9 @@ def query_physical_gpus() -> list[PhysicalGPU]:
         ]
 
         try:
-            memory_mib = int(float(values[4]))
+            memory_mib = int(
+                float(values[4])
+            )
         except ValueError:
             continue
 
@@ -104,14 +113,9 @@ def select_gpu(
     gpus: list[PhysicalGPU],
     selector: str,
 ) -> PhysicalGPU:
-    """
-    Select a GPU using index, UUID, or PCI bus ID.
-    """
-
     selector_lower = selector.lower()
 
     for gpu in gpus:
-
         if gpu.index == selector:
             return gpu
 
@@ -129,13 +133,6 @@ def select_gpu(
 def is_standard_profile(
     profile: MigProfile,
 ) -> bool:
-    """
-    Return True for standard compute MIG profiles.
-
-    Media/gfx extension profiles are intentionally excluded
-    from automatic equal-split recommendations.
-    """
-
     return bool(
         STANDARD_PROFILE_RE.match(
             profile.name
@@ -148,26 +145,19 @@ def recommend_split(
     profiles: list[MigProfile],
     instances: int,
 ) -> SplitRecommendation:
-    """
-    Find the closest valid equal-memory MIG profile.
-
-    The recommendation uses only profiles reported by
-    the installed NVIDIA driver.
-    """
-
     if instances < 1:
         raise ValueError(
             "Instance count must be at least 1."
         )
 
     target_memory = (
-        gpu.memory_gib / instances
+        gpu.memory_gib
+        / instances
     )
 
     candidates: list[MigProfile] = []
 
     for profile in profiles:
-
         if not is_standard_profile(profile):
             continue
 
@@ -182,19 +172,21 @@ def recommend_split(
             * instances
         )
 
-        # Allow small reporting differences but reject
-        # obviously impossible over-allocation.
-        if allocated > gpu.memory_gib * 1.02:
+        if (
+            allocated
+            > gpu.memory_gib * 1.02
+        ):
             continue
 
-        candidates.append(profile)
+        candidates.append(
+            profile
+        )
 
     if not candidates:
         raise ValueError(
-            (
-                f"No MIG profile reported by the driver "
-                f"supports {instances} identical instances."
-            )
+            "No MIG profile reported by the "
+            f"driver supports {instances} "
+            "identical instances."
         )
 
     candidates.sort(
@@ -233,17 +225,15 @@ def recommend_split(
         and per_instance_error <= 0.20
     )
 
-    if acceptable:
-        message = (
-            "A suitable equal-memory MIG geometry "
-            "was found."
-        )
-    else:
-        message = (
+    message = (
+        "A suitable equal-memory MIG geometry was found."
+        if acceptable
+        else (
             "No close equal-memory geometry exists. "
             "The best native MIG profile would leave "
             "a significant amount of GPU memory unused."
         )
+    )
 
     return SplitRecommendation(
         gpu_index=gpu.index,
@@ -267,24 +257,20 @@ def plan_split(
     gpu_selector: str,
     instances: int,
     json_output: bool = False,
+    apply: bool = False,
+    dry_run: bool = False,
+    yes: bool = False,
+    force: bool = False,
 ) -> int:
-    """Generate a read-only automatic MIG split plan."""
-
     try:
-        gpus = query_physical_gpus()
-
         gpu = select_gpu(
-            gpus,
+            query_physical_gpus(),
             gpu_selector,
-        )
-
-        profiles = query_profiles(
-            gpu_selector
         )
 
         recommendation = recommend_split(
             gpu,
-            profiles,
+            query_profiles(gpu.index),
             instances,
         )
 
@@ -292,9 +278,7 @@ def plan_split(
         NvidiaSmiError,
         ValueError,
     ) as exc:
-
         if json_output:
-
             print(
                 json.dumps(
                     {
@@ -303,21 +287,20 @@ def plan_split(
                     indent=2,
                 )
             )
-
         else:
-
             print()
             print("MIGOps Smart Split")
             print("==================")
             print()
-            print("[FAIL] Unable to generate split plan")
+            print(
+                "[FAIL] Unable to generate split plan"
+            )
             print()
             print(str(exc))
 
         return 1
 
-    if json_output:
-
+    if json_output and not apply:
         print(
             json.dumps(
                 asdict(recommendation),
@@ -331,90 +314,117 @@ def plan_split(
             else 2
         )
 
-    print()
-    print("MIGOps Smart Split")
-    print("==================")
-    print()
-
-    print(f"GPU:          {recommendation.gpu_index}")
-    print(f"Model:        {recommendation.gpu_name}")
-    print(
-        f"Total VRAM:   "
-        f"{recommendation.gpu_memory_gib:.2f} GiB"
-    )
-    print(
-        f"MIG Mode:     "
-        f"{recommendation.mig_mode}"
-    )
-
-    print()
-
-    print("Request")
-    print("-------")
-
-    print(
-        f"Instances:            "
-        f"{recommendation.requested_instances}"
-    )
-
-    print(
-        f"Target per instance:  "
-        f"{recommendation.target_memory_gib:.2f} GiB"
-    )
-
-    print()
-
-    print("Recommended MIG Geometry")
-    print("------------------------")
-
-    print(
-        f"{recommendation.requested_instances} x "
-        f"MIG {recommendation.profile}"
-    )
-
-    print()
-
-    print(
-        f"Profile memory:       "
-        f"{recommendation.profile_memory_gib:.2f} GiB"
-    )
-
-    print(
-        f"Allocated memory:     "
-        f"{recommendation.allocated_memory_gib:.2f} GiB"
-    )
-
-    print(
-        f"Memory coverage:      "
-        f"{recommendation.memory_coverage_percent:.1f}%"
-    )
-
-    print(
-        f"Maximum instances:    "
-        f"{recommendation.max_instances}"
-    )
-
-    print()
-
-    if recommendation.acceptable:
-
-        print("[PASS] Suitable equal split found.")
-
-    else:
+    if not json_output:
+        print()
+        print("MIGOps Smart Split")
+        print("==================")
+        print()
+        print(
+            f"GPU:          "
+            f"{recommendation.gpu_index}"
+        )
+        print(
+            f"Model:        "
+            f"{recommendation.gpu_name}"
+        )
+        print(
+            f"Total VRAM:   "
+            f"{recommendation.gpu_memory_gib:.2f} GiB"
+        )
+        print(
+            f"MIG Mode:     "
+            f"{recommendation.mig_mode}"
+        )
+        print()
+        print("Request")
+        print("-------")
+        print(
+            f"Instances:            "
+            f"{recommendation.requested_instances}"
+        )
+        print(
+            f"Target per instance:  "
+            f"{recommendation.target_memory_gib:.2f} GiB"
+        )
+        print()
+        print("Recommended MIG Geometry")
+        print("------------------------")
+        print(
+            f"{recommendation.requested_instances} x "
+            f"MIG {recommendation.profile}"
+        )
+        print()
+        print(
+            f"Profile memory:       "
+            f"{recommendation.profile_memory_gib:.2f} GiB"
+        )
+        print(
+            f"Allocated memory:     "
+            f"{recommendation.allocated_memory_gib:.2f} GiB"
+        )
+        print(
+            f"Memory coverage:      "
+            f"{recommendation.memory_coverage_percent:.1f}%"
+        )
+        print(
+            f"Maximum instances:    "
+            f"{recommendation.max_instances}"
+        )
+        print()
 
         print(
-            "[WARN] This is not a good equal-memory split."
+            "[PASS] Suitable equal split found."
+            if recommendation.acceptable
+            else (
+                "[WARN] This is not a good "
+                "equal-memory split."
+            )
         )
 
-    print()
-    print(recommendation.message)
+        print()
+        print(
+            recommendation.message
+        )
 
-    print()
-    print("No changes have been made.")
-    print()
+    if not recommendation.acceptable:
+        print()
+        print(
+            "No changes have been made."
+        )
+        return 2
 
-    return (
-        0
-        if recommendation.acceptable
-        else 2
+    if not apply:
+        print()
+        print(
+            "No changes have been made. "
+            "Use --apply --dry-run to preview "
+            "execution, or --apply --yes to execute."
+        )
+        return 0
+
+    config = MigOpsConfig(
+        version=1,
+        gpus=[
+            GPUConfig(
+                gpu=gpu.index,
+                mig_enabled=True,
+                instances=[
+                    ProfileRequest(
+                        profile=recommendation.profile,
+                        count=instances,
+                    )
+                ],
+            )
+        ],
+    )
+
+    return apply_config_object(
+        config,
+        dry_run=dry_run,
+        yes=yes,
+        force=force,
+        source_label=(
+            f"smart split: GPU {gpu.index} into "
+            f"{instances} x {recommendation.profile}"
+        ),
     )

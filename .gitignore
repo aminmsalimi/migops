@@ -25,3 +25,5 @@ Thumbs.db
 # MIGOps generated data
 snapshots/
 *.log
+.migops-backup/
+upgrade_migops_desired_state.py
