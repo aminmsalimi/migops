@@ -1,100 +1,11 @@
 import argparse
-import platform
-import shutil
-import subprocess
 import sys
 
 from migops import __version__
+from migops.doctor import command_doctor
 from migops.profiles import print_profiles
 from migops.status import print_status
 from migops.workloads import print_users
-
-
-def print_check(status: str, message: str) -> None:
-    print(f"[{status}] {message}")
-
-
-def command_doctor() -> int:
-    """Check whether the local system is ready for MIGOps."""
-
-    print()
-    print("MIGOps Environment Check")
-    print("========================")
-    print()
-
-    system = platform.system()
-
-    if system == "Linux":
-        print_check("OK", f"Operating system: {system}")
-    else:
-        print_check(
-            "WARN",
-            f"Operating system: {system} "
-            "(MIGOps is intended for Linux GPU hosts)",
-        )
-
-    print_check("OK", f"Python: {platform.python_version()}")
-
-    nvidia_smi = shutil.which("nvidia-smi")
-
-    if not nvidia_smi:
-        print_check("FAIL", "nvidia-smi not found")
-        print()
-        print(
-            "NVIDIA drivers may not be installed "
-            "or nvidia-smi is not in PATH."
-        )
-        return 1
-
-    print_check("OK", f"nvidia-smi found: {nvidia_smi}")
-
-    try:
-        result = subprocess.run(
-            [
-                nvidia_smi,
-                "--query-gpu=index,name,driver_version",
-                "--format=csv,noheader",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-    except OSError as exc:
-        print_check(
-            "FAIL",
-            f"Could not execute nvidia-smi: {exc}",
-        )
-        return 1
-
-    if result.returncode != 0:
-        print_check("FAIL", "nvidia-smi returned an error")
-
-        if result.stderr:
-            print()
-            print(result.stderr.strip())
-
-        return 1
-
-    gpu_output = result.stdout.strip()
-
-    if not gpu_output:
-        print_check("FAIL", "No NVIDIA GPUs detected")
-        return 1
-
-    print_check("OK", "NVIDIA GPU detected")
-
-    print()
-    print("Detected GPUs")
-    print("-------------")
-
-    for line in gpu_output.splitlines():
-        print(line)
-
-    print()
-    print("Environment looks ready for further MIG checks.")
-
-    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -112,21 +23,32 @@ def build_parser() -> argparse.ArgumentParser:
         version=f"MIGOps {__version__}",
     )
 
-    subparsers = parser.add_subparsers(dest="command")
-
-    # doctor
-    subparsers.add_parser(
-        "doctor",
-        help="Check the local NVIDIA GPU environment.",
+    subparsers = parser.add_subparsers(
+        dest="command",
     )
 
+    # ---------------------------------------------------------
+    # doctor
+    # ---------------------------------------------------------
+
+    subparsers.add_parser(
+        "doctor",
+        help="Diagnose the local NVIDIA GPU and MIG environment.",
+    )
+
+    # ---------------------------------------------------------
     # status
+    # ---------------------------------------------------------
+
     subparsers.add_parser(
         "status",
         help="Show NVIDIA GPU and MIG status.",
     )
 
+    # ---------------------------------------------------------
     # profiles
+    # ---------------------------------------------------------
+
     profiles_parser = subparsers.add_parser(
         "profiles",
         help="Show supported NVIDIA MIG GPU instance profiles.",
@@ -143,10 +65,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output profile information as JSON.",
     )
 
+    # ---------------------------------------------------------
     # users
+    # ---------------------------------------------------------
+
     users_parser = subparsers.add_parser(
         "users",
-        help="Show processes currently using NVIDIA GPUs or MIG instances.",
+        help=(
+            "Show processes currently using NVIDIA GPUs "
+            "or MIG instances."
+        ),
     )
 
     users_parser.add_argument(
@@ -168,10 +96,14 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "doctor":
-        sys.exit(command_doctor())
+        sys.exit(
+            command_doctor()
+        )
 
     if args.command == "status":
-        sys.exit(print_status())
+        sys.exit(
+            print_status()
+        )
 
     if args.command == "profiles":
         sys.exit(
