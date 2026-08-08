@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Merged environment diagnostics into `migops status` and removed the separate `migops doctor` command.
+
 ### Added
 
 - GPU and MIG status inspection

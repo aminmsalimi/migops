@@ -5,7 +5,6 @@ MIGOps is intended for Linux GPU hosts with an NVIDIA driver, `nvidia-smi`, and 
 Start with read-only inspection:
 
 ```bash
-migops doctor
 migops status
 migops profiles --gpu 0
 migops users --gpu 0

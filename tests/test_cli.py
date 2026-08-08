@@ -13,7 +13,6 @@ class TestCLI(unittest.TestCase):
         help_text = parser.format_help()
 
         for command in (
-            "doctor",
             "status",
             "profiles",
             "users",

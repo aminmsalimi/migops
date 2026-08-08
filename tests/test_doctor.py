@@ -2,7 +2,7 @@
 
 import unittest
 
-from migops.doctor import mig_supported_from_mode
+from migops.status import mig_supported_from_mode
 
 
 class TestDoctor(unittest.TestCase):

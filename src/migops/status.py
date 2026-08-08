@@ -1,13 +1,18 @@
-"""GPU and MIG status reporting."""
+"""Combined system, NVIDIA GPU, MIG, and workload status reporting."""
 
 from __future__ import annotations
 
 import csv
 import io
+import platform
 import re
 from dataclasses import dataclass, field
 
-from migops.nvidia import NvidiaSmiError, run_nvidia_smi
+from migops.nvidia import (
+    NvidiaSmiError,
+    find_nvidia_smi,
+    run_nvidia_smi,
+)
 
 
 @dataclass
@@ -42,8 +47,17 @@ MIG_LINE_RE = re.compile(
 )
 
 
+def mig_supported_from_mode(mig_mode: str) -> bool:
+    """Return True when the driver reports a normal MIG mode state."""
+
+    return mig_mode.strip().lower() in {
+        "enabled",
+        "disabled",
+    }
+
+
 def query_gpus() -> list[GPU]:
-    """Query GPU inventory and MIG mode."""
+    """Query physical NVIDIA GPU inventory and current MIG mode."""
 
     output = run_nvidia_smi(
         [
@@ -53,7 +67,6 @@ def query_gpus() -> list[GPU]:
     )
 
     reader = csv.reader(io.StringIO(output))
-
     gpus: list[GPU] = []
 
     for row in reader:
@@ -77,20 +90,14 @@ def query_gpus() -> list[GPU]:
 
 
 def query_mig_devices() -> dict[str, list[MigDevice]]:
-    """
-    Return MIG devices grouped by their parent GPU index.
-
-    Uses `nvidia-smi -L`.
-    """
+    """Return MIG devices grouped by physical GPU index."""
 
     output = run_nvidia_smi(["-L"])
 
     devices: dict[str, list[MigDevice]] = {}
-
     current_gpu: str | None = None
 
     for line in output.splitlines():
-
         gpu_match = GPU_LINE_RE.match(line)
 
         if gpu_match:
@@ -113,7 +120,7 @@ def query_mig_devices() -> dict[str, list[MigDevice]]:
 
 
 def collect_status() -> list[GPU]:
-    """Collect GPU and MIG inventory."""
+    """Collect physical GPU and MIG-device inventory."""
 
     gpus = query_gpus()
 
@@ -128,83 +135,198 @@ def collect_status() -> list[GPU]:
     return gpus
 
 
+def print_check(status: str, message: str) -> None:
+    print(f"[{status}] {message}")
+
+
 def print_status() -> int:
-    """Print a human-readable GPU/MIG status report."""
+    """Print one combined system, NVIDIA, MIG, and workload status report."""
 
     print()
     print("MIGOps Status")
     print("=============")
     print()
 
+    print("System")
+    print("------")
+
+    system = platform.system()
+
+    if system == "Linux":
+        print_check("PASS", "Operating system: Linux")
+    else:
+        print_check(
+            "WARN",
+            f"Operating system: {system} "
+            "(real MIG operations are intended for Linux GPU hosts)",
+        )
+
+    print_check("PASS", f"Python: {platform.python_version()}")
+
+    print()
+    print("NVIDIA")
+    print("------")
+
+    nvidia_smi = find_nvidia_smi()
+
+    if not nvidia_smi:
+        print_check("FAIL", "nvidia-smi not found")
+        print()
+        print(
+            "Install a supported NVIDIA driver and ensure "
+            "nvidia-smi is available in PATH."
+        )
+        return 1
+
+    print_check("PASS", f"nvidia-smi found: {nvidia_smi}")
+
     try:
         gpus = collect_status()
     except NvidiaSmiError as exc:
-        print("[FAIL] Unable to query NVIDIA GPUs")
+        print_check("FAIL", "Unable to query NVIDIA GPUs")
         print()
         print(str(exc))
         return 1
 
     if not gpus:
-        print("[FAIL] No NVIDIA GPUs detected.")
+        print_check("FAIL", "No NVIDIA GPUs detected")
         return 1
-
-    print(f"GPUs detected: {len(gpus)}")
 
     driver_versions = sorted(
         {gpu.driver_version for gpu in gpus}
     )
 
+    print_check("PASS", f"NVIDIA GPUs detected: {len(gpus)}")
+
     if driver_versions:
-        print(f"NVIDIA Driver: {', '.join(driver_versions)}")
+        print_check(
+            "PASS",
+            f"NVIDIA driver: {', '.join(driver_versions)}",
+        )
+
+    try:
+        from migops.workloads import (
+            query_compute_instances,
+            query_workloads,
+        )
+
+        compute_instances = query_compute_instances()
+
+        try:
+            workloads = query_workloads()
+        except NvidiaSmiError:
+            workloads = []
+
+    except Exception:
+        compute_instances = []
+        workloads = []
+
+    print()
+
+    warning_count = 0
+    mig_capable_count = 0
 
     for gpu in gpus:
-        print()
+        print(f"GPU {gpu.index}")
         print("-" * 60)
-        print(f"GPU {gpu.index}: {gpu.name}")
-        print("-" * 60)
-
+        print(f"Model:      {gpu.name}")
         print(f"UUID:       {gpu.uuid}")
         print(f"PCI Bus:    {gpu.pci_bus_id}")
         print(f"MIG Mode:   {gpu.mig_mode}")
+        print()
 
-        if gpu.mig_mode.lower() == "enabled":
-
-            if gpu.mig_devices:
-                print()
-                print("MIG Devices")
-                print()
-
-                for device in gpu.mig_devices:
-                    print(
-                        f"  Device {device.device_id:<3} "
-                        f"{device.profile:<15} "
-                        f"{device.uuid}"
-                    )
-
-                print()
-                print(
-                    f"MIG instances detected: "
-                    f"{len(gpu.mig_devices)}"
-                )
-
-            else:
-                print()
-                print(
-                    "MIG mode is enabled, but no MIG devices "
-                    "were detected."
-                )
-
-        elif gpu.mig_mode.lower() == "disabled":
-            print()
-            print("MIG is currently disabled on this GPU.")
-
+        if mig_supported_from_mode(gpu.mig_mode):
+            mig_capable_count += 1
+            print_check("PASS", "MIG capability detected")
         else:
-            print()
-            print(
-                "MIG state could not be determined "
-                f"({gpu.mig_mode})."
+            warning_count += 1
+            print_check("WARN", "MIG capability not detected")
+
+        mode = gpu.mig_mode.strip().lower()
+
+        if mode == "enabled":
+            print_check("PASS", "MIG mode enabled")
+        elif mode == "disabled":
+            warning_count += 1
+            print_check("WARN", "MIG supported but currently disabled")
+        else:
+            print_check("INFO", f"MIG state: {gpu.mig_mode}")
+
+        if mode == "enabled":
+            if gpu.mig_devices:
+                print_check(
+                    "PASS",
+                    f"MIG devices detected: {len(gpu.mig_devices)}",
+                )
+            else:
+                print_check(
+                    "INFO",
+                    "MIG enabled but no MIG devices created",
+                )
+
+            gpu_compute_instances = [
+                instance
+                for instance in compute_instances
+                if instance.gpu == gpu.index
+            ]
+
+            if gpu_compute_instances:
+                print_check(
+                    "PASS",
+                    "Compute Instances detected: "
+                    f"{len(gpu_compute_instances)}",
+                )
+            else:
+                print_check(
+                    "INFO",
+                    "No MIG Compute Instances detected",
+                )
+
+        gpu_workloads = [
+            process
+            for process in workloads
+            if process.gpu == gpu.index
+        ]
+
+        if gpu_workloads:
+            warning_count += 1
+            print_check(
+                "WARN",
+                f"Active GPU processes: {len(gpu_workloads)}",
             )
 
+            for process in gpu_workloads:
+                user = process.username or "unknown"
+                memory = (
+                    f"{process.memory_mib} MiB"
+                    if process.memory_mib is not None
+                    else "N/A"
+                )
+
+                print(
+                    f"       PID {process.pid} | "
+                    f"{user} | {memory} | "
+                    f"{process.process_name}"
+                )
+        else:
+            print_check("PASS", "No active GPU processes detected")
+
+        print()
+
+    print("Summary")
+    print("-------")
+    print(f"Total NVIDIA GPUs: {len(gpus)}")
+    print(f"MIG-capable GPUs:  {mig_capable_count}")
+    print(f"Warnings:          {warning_count}")
     print()
+
+    if mig_capable_count == 0:
+        print("MIGOps readiness: MIG NOT AVAILABLE")
+        return 1
+
+    if warning_count:
+        print("MIGOps readiness: READY WITH WARNINGS")
+    else:
+        print("MIGOps readiness: READY")
 
     return 0

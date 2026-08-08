@@ -5,7 +5,6 @@ Before tagging the first release, test MIGOps on at least one real MIG-capable L
 Read-only checks:
 
 ```bash
-migops doctor
 migops status
 migops profiles --gpu 0
 migops users --gpu 0

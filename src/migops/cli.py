@@ -8,7 +8,6 @@ from migops.apply import (
 )
 from migops.config import print_validation
 from migops.diffing import print_diff
-from migops.doctor import command_doctor
 from migops.lifecycle import (
     create_ci,
     create_gi,
@@ -46,11 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(
         dest="command",
-    )
-
-    subparsers.add_parser(
-        "doctor",
-        help="Diagnose the NVIDIA GPU and MIG environment.",
     )
 
     subparsers.add_parser(
@@ -401,11 +395,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-
-    if args.command == "doctor":
-        sys.exit(
-            command_doctor()
-        )
 
     if args.command == "status":
         sys.exit(

@@ -3,7 +3,6 @@
 ## Inspection
 
 ```bash
-migops doctor
 migops status
 migops profiles [--gpu GPU] [--json]
 migops users [--gpu GPU] [--json]

@@ -47,7 +47,6 @@ python -m pip install -e .
 Inspect the system:
 
 ```bash
-migops doctor
 migops status
 migops profiles
 migops users
