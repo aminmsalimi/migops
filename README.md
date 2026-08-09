@@ -6,6 +6,8 @@ It complements NVIDIA's native MIG tooling with workload-aware safety checks, sm
 
 ## Demo
 Real Hardware Demo — MIGOps running on a real NVIDIA H100 GPU host with Ubuntu 26.04 LTS, from MIG discovery to a verified 4-way GPU split.
+
+
 ![MIGOps demo](assets/demo.gif)
 
 ## Features
