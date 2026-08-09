@@ -17,40 +17,50 @@ H100_LCI = r"""
 """
 
 
+def _field(instance, *names):
+    for name in names:
+        if hasattr(instance, name):
+            return getattr(instance, name)
+    return None
+
+
 class TestH100CIParser(unittest.TestCase):
 
     def test_real_h100_lci_row_is_detected(self):
         instances = parse_compute_instances(H100_LCI)
 
         self.assertEqual(len(instances), 1)
-
         instance = instances[0]
 
-        gpu = getattr(
-            instance,
-            "gpu",
-            getattr(instance, "gpu_index", None),
-        )
-        gi = getattr(
+        gpu = _field(instance, "gpu", "gpu_id", "gpu_index")
+        gi = _field(
             instance,
             "gi",
-            getattr(instance, "gpu_instance_id", None),
+            "gi_id",
+            "gpu_instance",
+            "gpu_instance_id",
         )
-        ci = getattr(
+        profile = _field(instance, "profile", "profile_name", "name")
+        profile_id = _field(instance, "profile_id")
+        ci = _field(
             instance,
             "ci",
-            getattr(instance, "compute_instance_id", None),
+            "ci_id",
+            "instance",
+            "instance_id",
+            "compute_instance",
+            "compute_instance_id",
         )
-        profile = getattr(
-            instance,
-            "profile",
-            getattr(instance, "profile_name", None),
-        )
+        placement = _field(instance, "placement")
 
         self.assertEqual(str(gpu), "0")
         self.assertEqual(str(gi), "6")
+        self.assertEqual(str(profile), "1g.24gb")
+        self.assertEqual(str(profile_id), "7")
         self.assertEqual(str(ci), "0")
-        self.assertEqual(profile, "1g.24gb")
+
+        if placement is not None:
+            self.assertEqual(str(placement), "0:2")
 
 
 if __name__ == "__main__":

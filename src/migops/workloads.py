@@ -106,72 +106,54 @@ def get_process_username(pid: int) -> str | None:
         return None
 
 
-def parse_compute_instances(output: str):
-    # Parse current NVIDIA `nvidia-smi mig -lci` table output.
+def _parse_compute_instances_legacy(output: str) -> list[ComputeInstance]:
+    """Parse `nvidia-smi mig -lci` output."""
 
-    instances = []
+    instances: list[ComputeInstance] = []
+
+    for line in output.splitlines():
+        match = CI_RE.match(line)
+
+        if not match:
+            continue
+
+        instances.append(
+            ComputeInstance(
+                gpu=match.group("gpu"),
+                gi_id=match.group("gi"),
+                ci_id=match.group("ci"),
+                profile=match.group("profile"),
+            )
+        )
+
+    return instances
+
+
+def parse_compute_instances(output: str):
+    # Parse legacy output first, then fall back to current H100 table rows.
+    instances = _parse_compute_instances_legacy(output)
+
+    if instances:
+        return instances
+
+    row_re = re.compile(
+        r"^\|\s*(\d+)\s+(\d+)\s+MIG\s+(\S+)\s+"
+        r"(\d+)\s+(\d+)(?:\s+(\d+:\d+))?\s*\|$"
+    )
 
     for raw_line in output.splitlines():
-        line = raw_line.strip()
-
-        if not (line.startswith("|") and line.endswith("|")):
+        match = row_re.match(raw_line.strip())
+        if not match:
             continue
 
-        body = line[1:-1].strip()
+        gpu, gi, profile, profile_id, ci, placement = match.groups()
 
-        if (
-            not body
-            or body.startswith("=")
-            or body.lower().startswith("compute instances")
-            or body.lower().startswith("gpu ")
-            or body.lower().startswith("instance")
-            or body.lower() == "id"
-        ):
-            continue
-
-        parts = body.split()
-
-        # Current H100:
-        # 0  6  MIG  1g.24gb  7  0  0:2
-        if len(parts) >= 7 and parts[2].upper() == "MIG":
-            gpu = parts[0]
-            gi = parts[1]
-            profile = parts[3]
-            profile_id = parts[4]
-            ci = parts[5]
-            placement = parts[6]
-
-        # Older table forms may omit the literal MIG token.
-        elif len(parts) >= 6:
-            gpu = parts[0]
-            gi = parts[1]
-            profile = parts[2]
-            profile_id = parts[3]
-            ci = parts[4]
-            placement = parts[5]
-
-        else:
-            continue
-
-        if not (
-            gpu.isdigit()
-            and gi.isdigit()
-            and profile_id.isdigit()
-            and ci.isdigit()
-        ):
-            continue
-
-        placement_start = None
-        placement_size = None
+        placement = placement or ""
+        placement_start = ""
+        placement_size = ""
 
         if ":" in placement:
-            start_text, size_text = placement.split(":", 1)
-
-            if start_text.isdigit():
-                placement_start = start_text
-
-            if size_text.isdigit():
-                placement_size = size_text
+            placement_start, placement_size = placement.split(":", 1)
 
         instances.append(
             ComputeInstance(
@@ -183,6 +165,7 @@ def parse_compute_instances(output: str):
         )
 
     return instances
+
 
 
 
