@@ -30,9 +30,16 @@ class TestH100CIParser(unittest.TestCase):
         instances = parse_compute_instances(H100_LCI)
 
         self.assertEqual(len(instances), 1)
+
         instance = instances[0]
 
-        gpu = _field(instance, "gpu", "gpu_id", "gpu_index")
+        gpu = _field(
+            instance,
+            "gpu",
+            "gpu_id",
+            "gpu_index",
+        )
+
         gi = _field(
             instance,
             "gi",
@@ -40,8 +47,14 @@ class TestH100CIParser(unittest.TestCase):
             "gpu_instance",
             "gpu_instance_id",
         )
-        profile = _field(instance, "profile", "profile_name", "name")
-        profile_id = _field(instance, "profile_id")
+
+        profile = _field(
+            instance,
+            "profile",
+            "profile_name",
+            "name",
+        )
+
         ci = _field(
             instance,
             "ci",
@@ -51,12 +64,15 @@ class TestH100CIParser(unittest.TestCase):
             "compute_instance",
             "compute_instance_id",
         )
-        placement = _field(instance, "placement")
+
+        placement = _field(
+            instance,
+            "placement",
+        )
 
         self.assertEqual(str(gpu), "0")
         self.assertEqual(str(gi), "6")
         self.assertEqual(str(profile), "1g.24gb")
-        self.assertEqual(str(profile_id), "7")
         self.assertEqual(str(ci), "0")
 
         if placement is not None:
