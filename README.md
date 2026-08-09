@@ -192,3 +192,15 @@ Core workflows are implemented and covered by automated tests. Real-world valida
 ### Animation 2
 ![MIGOps Animation 2](assets/Animation2.gif)
 
+
+## Demo Comparison
+
+### Demo
+![MIGOps Demo](assets/demo.gif)
+
+### Animation 1
+![MIGOps Animation 1](assets/Animation1.gif)
+
+### Animation 2
+![MIGOps Animation 2](assets/Animation2.gif)
+
