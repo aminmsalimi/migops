@@ -5,7 +5,7 @@ MIGOps is a Python CLI for safe NVIDIA Multi-Instance GPU (MIG) operations on Li
 It complements NVIDIA's native MIG tooling with workload-aware safety checks, smart partition recommendations, configuration planning, snapshots, drift detection, and safe apply workflows.
 
 ## Demo
-
+Real Hardware Demo — MIGOps running on a real NVIDIA H100 GPU host with Ubuntu 26.04 LTS, from MIG discovery to a verified 4-way GPU split.
 ![MIGOps demo](assets/demo.gif)
 
 ## Features
