@@ -181,26 +181,3 @@ GitHub Actions runs the test suite automatically on pushes and pull requests.
 MIGOps v0.1.0 is an early alpha release.
 
 Core workflows are implemented and covered by automated tests. Real-world validation across different NVIDIA MIG-capable GPU generations and driver versions is still ongoing.
-## Demo Comparison
-
-### Demo
-![MIGOps Demo](assets/demo.gif)
-
-### Animation 1
-![MIGOps Animation 1](assets/Animation1.gif)
-
-### Animation 2
-![MIGOps Animation 2](assets/Animation2.gif)
-
-
-## Demo Comparison
-
-### Demo
-![MIGOps Demo](assets/demo.gif)
-
-### Animation 1
-![MIGOps Animation 1](assets/Animation1.gif)
-
-### Animation 2
-![MIGOps Animation 2](assets/Animation2.gif)
-
