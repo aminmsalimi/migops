@@ -6,16 +6,7 @@ It complements NVIDIA's native MIG tooling with workload-aware safety checks, sm
 
 ## Demo
 
-<table>
-<tr>
-<td width="50%" align="center"><b>Demo</b></td>
-<td width="50%" align="center"><b>Animation 1</b></td>
-</tr>
-<tr>
-<td width="50%"><img src="assets/demo.gif" width="100%" alt="MIGOps Demo"></td>
-<td width="50%"><img src="assets/Animation1.gif" width="100%" alt="MIGOps Animation 1"></td>
-</tr>
-</table>
+![MIGOps demo](assets/demo.gif)
 
 ## Features
 
