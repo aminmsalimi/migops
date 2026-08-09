@@ -680,6 +680,32 @@ def destroy_mig(
     CIs are removed before GIs automatically.
     """
 
+    # MIGOPS_DELETE_ALL_DIRECT_DESTROY
+    if destroy_all:
+        try:
+            if not dry_run:
+                check_workload_safety(
+                    gpu,
+                    force=force,
+                )
+        except MigSafetyError as exc:
+            print(f"[BLOCKED] {exc}")
+            return 1
+        except NvidiaSmiError as exc:
+            print(
+                "[WARN] Workload preflight unavailable: "
+                f"{exc}"
+            )
+            print(
+                "[INFO] Continuing with native delete-all; "
+                "the NVIDIA driver will reject instances that are in use."
+            )
+
+        return _delete_all_mig_instances_direct(
+            gpu,
+            dry_run=dry_run,
+        )
+
     print()
     print("MIGOps Destroy")
     print("==============")
@@ -985,6 +1011,105 @@ def create_gi(
     return result
 
 
+def _is_normal_empty_destroy_result(
+    error: NvidiaSmiError,
+    *,
+    kind: str,
+) -> bool:
+    """Return True only for NVIDIA's normal already-empty destroy result."""
+
+    message = str(error).strip().lower()
+
+    if kind == "ci":
+        return (
+            "no compute instances found" in message
+            and "insufficient permissions" not in message
+        )
+
+    if kind == "gi":
+        return (
+            "no gpu instances found" in message
+            and "insufficient permissions" not in message
+        )
+
+    return False
+
+
+def _execute_native_destroy(
+    arguments: list[str],
+    *,
+    dry_run: bool,
+    empty_kind: str,
+) -> int:
+    """Run one native MIG destroy command without listing instances first."""
+
+    print("nvidia-smi " + " ".join(arguments))
+
+    if dry_run:
+        return 0
+
+    try:
+        output = run_nvidia_smi(arguments)
+    except NvidiaSmiError as exc:
+        if _is_normal_empty_destroy_result(
+            exc,
+            kind=empty_kind,
+        ):
+            print("[INFO] Nothing to delete for this step.")
+            return 0
+
+        print(f"[FAIL] {exc}")
+        return 1
+
+    if output.strip():
+        print(output.strip())
+
+    return 0
+
+
+def _delete_all_compute_instances_direct(
+    gpu: str,
+    *,
+    gi: str | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Delete all CIs on a GPU or in one GI without listing them first."""
+
+    arguments = ["mig", "-dci"]
+
+    if gi is not None:
+        arguments.extend(["-gi", gi])
+
+    arguments.extend(["-i", gpu])
+
+    return _execute_native_destroy(
+        arguments,
+        dry_run=dry_run,
+        empty_kind="ci",
+    )
+
+
+def _delete_all_mig_instances_direct(
+    gpu: str,
+    *,
+    dry_run: bool = False,
+) -> int:
+    """Delete all CIs first, then all GIs, without -lci/-lgi prequeries."""
+
+    result = _delete_all_compute_instances_direct(
+        gpu,
+        dry_run=dry_run,
+    )
+
+    if result != 0:
+        return result
+
+    return _execute_native_destroy(
+        ["mig", "-dgi", "-i", gpu],
+        dry_run=dry_run,
+        empty_kind="gi",
+    )
+
 def delete_gi(
     gpu: str,
     *,
@@ -993,6 +1118,32 @@ def delete_gi(
     force: bool = False,
 ) -> int:
     """Advanced low-level GI deletion."""
+
+    # MIGOPS_DELETE_ALL_DIRECT_GI
+    if gi is None:
+        try:
+            if not dry_run:
+                check_workload_safety(
+                    gpu,
+                    force=force,
+                )
+        except MigSafetyError as exc:
+            print(f"[BLOCKED] {exc}")
+            return 1
+        except NvidiaSmiError as exc:
+            print(
+                "[WARN] Workload preflight unavailable: "
+                f"{exc}"
+            )
+            print(
+                "[INFO] Continuing with native delete-all; "
+                "the NVIDIA driver will reject instances that are in use."
+            )
+
+        return _delete_all_mig_instances_direct(
+            gpu,
+            dry_run=dry_run,
+        )
 
     try:
         selected = resolve_gpu(
@@ -1149,6 +1300,33 @@ def delete_ci(
     force: bool = False,
 ) -> int:
     """Advanced low-level CI deletion."""
+
+    # MIGOPS_DELETE_ALL_DIRECT_CI
+    if ci is None:
+        try:
+            if not dry_run:
+                check_workload_safety(
+                    gpu,
+                    force=force,
+                )
+        except MigSafetyError as exc:
+            print(f"[BLOCKED] {exc}")
+            return 1
+        except NvidiaSmiError as exc:
+            print(
+                "[WARN] Workload preflight unavailable: "
+                f"{exc}"
+            )
+            print(
+                "[INFO] Continuing with native CI delete-all; "
+                "the NVIDIA driver will reject instances that are in use."
+            )
+
+        return _delete_all_compute_instances_direct(
+            gpu,
+            gi=gi,
+            dry_run=dry_run,
+        )
 
     try:
         selected = resolve_gpu(

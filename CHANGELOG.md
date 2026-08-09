@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Fixed bulk MIG deletion on permission-restricted hardware: `gi delete --all`, `ci delete --all`, and `destroy --all` now use NVIDIA native bulk deletion directly instead of requiring `-lgi`/`-lci` listing first.
+
+### Fixed
+
 - Improved real-hardware behavior: profile capacity is labeled `Free / Max`; permission-limited CI/workload queries are reported as warnings instead of false zero counts; `migops users` has a non-privileged process-query fallback; and direct MIG enable/disable no longer requires `--force` because NVIDIA remains the final authority.\n
 - Fixed false MIG safety blocking when MIG mode is enabled with zero GPU/Compute Instances; NVIDIA `No ... instances found` responses are now treated as normal empty state.
 
