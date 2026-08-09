@@ -7,8 +7,9 @@ It complements NVIDIA's native MIG tooling with workload-aware safety checks, sm
 ## Demo
 ### ⚡ Real Hardware Demo
 
-**MIGOps** running on a real **NVIDIA H100** GPU host  
-🖥️ **Dell PowerEdge R770** · 🐧 **Ubuntu 26.04 LTS** · 🔧 **Bare-metal**
+MIGOps running on a real NVIDIA H100 GPU host on a bare-metal Dell PowerEdge R770 running Ubuntu 26.04 LTS 🐧.
+
+
 
 
 ![MIGOps demo](assets/demo.gif)
