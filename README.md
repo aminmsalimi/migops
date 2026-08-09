@@ -34,6 +34,16 @@ It complements NVIDIA's native MIG tooling with workload-aware safety checks, sm
 
 Development and parser tests can run without an NVIDIA GPU.
 
+## Quick Install
+
+Install MIGOps with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aminmsalimi/migops/main/install.sh | bash
+```
+
+The installer downloads MIGOps, creates an isolated Python virtual environment, installs the CLI, and makes `migops` available from the command line. When `sudo` is available, it also exposes the command through `/usr/local/bin` so privileged MIG operations work directly.
+
 ## Installation
 
 ```bash
