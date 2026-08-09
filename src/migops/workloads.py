@@ -106,27 +106,84 @@ def get_process_username(pid: int) -> str | None:
         return None
 
 
-def parse_compute_instances(output: str) -> list[ComputeInstance]:
-    """Parse `nvidia-smi mig -lci` output."""
+def parse_compute_instances(output: str):
+    # Parse current NVIDIA `nvidia-smi mig -lci` table output.
 
-    instances: list[ComputeInstance] = []
+    instances = []
 
-    for line in output.splitlines():
-        match = CI_RE.match(line)
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
 
-        if not match:
+        if not (line.startswith("|") and line.endswith("|")):
             continue
+
+        body = line[1:-1].strip()
+
+        if (
+            not body
+            or body.startswith("=")
+            or body.lower().startswith("compute instances")
+            or body.lower().startswith("gpu ")
+            or body.lower().startswith("instance")
+            or body.lower() == "id"
+        ):
+            continue
+
+        parts = body.split()
+
+        # Current H100:
+        # 0  6  MIG  1g.24gb  7  0  0:2
+        if len(parts) >= 7 and parts[2].upper() == "MIG":
+            gpu = parts[0]
+            gi = parts[1]
+            profile = parts[3]
+            profile_id = parts[4]
+            ci = parts[5]
+            placement = parts[6]
+
+        # Older table forms may omit the literal MIG token.
+        elif len(parts) >= 6:
+            gpu = parts[0]
+            gi = parts[1]
+            profile = parts[2]
+            profile_id = parts[3]
+            ci = parts[4]
+            placement = parts[5]
+
+        else:
+            continue
+
+        if not (
+            gpu.isdigit()
+            and gi.isdigit()
+            and profile_id.isdigit()
+            and ci.isdigit()
+        ):
+            continue
+
+        placement_start = None
+        placement_size = None
+
+        if ":" in placement:
+            start_text, size_text = placement.split(":", 1)
+
+            if start_text.isdigit():
+                placement_start = start_text
+
+            if size_text.isdigit():
+                placement_size = size_text
 
         instances.append(
             ComputeInstance(
-                gpu=match.group("gpu"),
-                gi_id=match.group("gi"),
-                ci_id=match.group("ci"),
-                profile=match.group("profile"),
+            gpu=gpu,
+            gi_id=gi,
+            ci_id=ci,
+            profile=profile
             )
         )
 
     return instances
+
 
 
 def parse_processes(output: str) -> list[GpuProcess]:

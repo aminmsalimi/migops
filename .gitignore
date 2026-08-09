@@ -34,3 +34,4 @@ fix_migops_disable_empty_state.py
 update_migops_recommend_vs_split.py
 fix_migops_hardware_usability.py
 fix_migops_delete_all_direct.py
+fix_migops_h100_ci_parser.py

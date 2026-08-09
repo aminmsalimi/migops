@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed H100 Compute Instance parsing for current `nvidia-smi mig -lci` table output, including the `MIG` profile prefix and Placement Start:Size column.
+
 ### Fixed
 
 - Fixed bulk MIG deletion on permission-restricted hardware: `gi delete --all`, `ci delete --all`, and `destroy --all` now use NVIDIA native bulk deletion directly instead of requiring `-lgi`/`-lci` listing first.
