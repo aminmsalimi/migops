@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/aminmsalimi/migops/main/install.sh 
 
 The installer downloads MIGOps, creates an isolated Python virtual environment, installs the CLI, and makes `migops` available from the command line. When `sudo` is available, it also exposes the command through `/usr/local/bin` so privileged MIG operations work directly.
 
-## Installation
+## Manual Installation
 
 ```bash
 git clone https://github.com/aminmsalimi/migops.git
